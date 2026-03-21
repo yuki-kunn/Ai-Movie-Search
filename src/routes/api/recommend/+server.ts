@@ -5,6 +5,102 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY || '';
 
+// Gemini API結果のキャッシュ
+interface CacheEntry {
+	analysis: any;
+	timestamp: number;
+}
+
+const geminiCache = new Map<string, CacheEntry>();
+const CACHE_TTL = 15 * 60 * 1000; // 15分
+const MAX_CACHE_SIZE = 100; // 最大キャッシュエントリー数
+
+// サーキットブレーカー
+let circuitBreakerOpen = false;
+let circuitBreakerOpenTime = 0;
+const CIRCUIT_BREAKER_TIMEOUT = 30 * 60 * 1000; // 30分
+
+// サーキットブレーカーの状態をチェック
+function isCircuitBreakerOpen(): boolean {
+	if (!circuitBreakerOpen) {
+		return false;
+	}
+
+	// タイムアウト期間が経過したらリセット
+	if (Date.now() - circuitBreakerOpenTime > CIRCUIT_BREAKER_TIMEOUT) {
+		circuitBreakerOpen = false;
+		console.log('サーキットブレーカー: リセット - Gemini APIの使用を再開します');
+		return false;
+	}
+
+	return true;
+}
+
+// サーキットブレーカーを開く
+function openCircuitBreaker() {
+	if (!circuitBreakerOpen) {
+		circuitBreakerOpen = true;
+		circuitBreakerOpenTime = Date.now();
+		const minutes = CIRCUIT_BREAKER_TIMEOUT / 60 / 1000;
+		console.log(`サーキットブレーカー: OPEN - Gemini APIの使用を${minutes}分間停止します`);
+	}
+}
+
+// キャッシュのクリーンアップ（古いエントリーを削除）
+function cleanupCache() {
+	const now = Date.now();
+	for (const [key, entry] of geminiCache.entries()) {
+		if (now - entry.timestamp > CACHE_TTL) {
+			geminiCache.delete(key);
+		}
+	}
+
+	// サイズ制限を超えた場合、古いエントリーから削除
+	if (geminiCache.size > MAX_CACHE_SIZE) {
+		const entries = Array.from(geminiCache.entries())
+			.sort((a, b) => a[1].timestamp - b[1].timestamp);
+		const toDelete = entries.slice(0, geminiCache.size - MAX_CACHE_SIZE);
+		toDelete.forEach(([key]) => geminiCache.delete(key));
+	}
+}
+
+// ムードに基づいてジャンルIDを取得
+function getGenresByMood(mood: string): number[] {
+	const lowerMood = mood.toLowerCase();
+
+	// アクション系
+	if (lowerMood.includes('action') || lowerMood.includes('アクション') || lowerMood.includes('迫力')) {
+		return [28, 12]; // Action, Adventure
+	}
+	// コメディ系
+	if (lowerMood.includes('funny') || lowerMood.includes('comedy') || lowerMood.includes('笑') || lowerMood.includes('面白')) {
+		return [35]; // Comedy
+	}
+	// ホラー系
+	if (lowerMood.includes('horror') || lowerMood.includes('scary') || lowerMood.includes('怖') || lowerMood.includes('ホラー')) {
+		return [27]; // Horror
+	}
+	// ロマンス系
+	if (lowerMood.includes('romance') || lowerMood.includes('love') || lowerMood.includes('恋') || lowerMood.includes('ロマンス')) {
+		return [10749]; // Romance
+	}
+	// SF系
+	if (lowerMood.includes('sci-fi') || lowerMood.includes('science') || lowerMood.includes('SF') || lowerMood.includes('未来')) {
+		return [878]; // Sci-Fi
+	}
+	// ドラマ系
+	if (lowerMood.includes('drama') || lowerMood.includes('ドラマ') || lowerMood.includes('感動')) {
+		return [18]; // Drama
+	}
+	// アニメ系
+	if (lowerMood.includes('anime') || lowerMood.includes('animation') || lowerMood.includes('アニメ')) {
+		return [16]; // Animation
+	}
+
+	// デフォルト: 人気のジャンル
+	return [28, 35, 18]; // Action, Comedy, Drama
+}
+
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const { mood } = await request.json();
@@ -13,8 +109,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ error: '気分やキーワードを入力してください' }, { status: 400 });
 		}
 
-		if (!GEMINI_API_KEY || !TMDB_API_KEY) {
-			console.error('APIキーが設定されていません');
+		if (!TMDB_API_KEY) {
+			console.error('TMDB APIキーが設定されていません');
 			// デモ用のサンプルデータを返す
 			return json({
 				movies: [
@@ -46,33 +142,144 @@ export const POST: RequestHandler = async ({ request }) => {
 			});
 		}
 
-		// Gemini AIを使用して映画のタイトルを生成
-		const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-		const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+		let movies: any[] = [];
 
-		const prompt = `Based on the mood or keywords "${mood}", suggest 5 popular movie titles that match this mood. Respond with ONLY the movie titles in English, one per line, without any numbering, explanations, or additional text. Just the titles.`;
+		// Gemini APIが利用可能な場合は使用して入力を解釈
+		if (GEMINI_API_KEY && !isCircuitBreakerOpen()) {
+			try {
+				// キャッシュのクリーンアップ
+				cleanupCache();
 
-		const result = await model.generateContent(prompt);
-		const response = await result.response;
-		const movieTitles = response
-			.text()
-			.split('\n')
-			.filter((title) => title.trim())
-			.slice(0, 5);
+				// キャッシュキーを生成（小文字に統一して正規化）
+				const cacheKey = mood.toLowerCase().trim();
 
-		// TMDB APIで映画情報を取得
-		const moviePromises = movieTitles.map(async (title) => {
-			const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(title)}&language=ja-JP`;
+				// キャッシュをチェック
+				const cached = geminiCache.get(cacheKey);
+				let analysis;
+
+				if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+					// キャッシュヒット
+					analysis = cached.analysis;
+					console.log('Gemini AI分析結果（キャッシュから取得）:', analysis);
+				} else {
+					// キャッシュミス - Gemini APIを呼び出す
+					const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+					const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+					const prompt = `ユーザーの入力: "${mood}"
+
+この入力を分析して、映画検索に最適な情報を抽出してください。
+以下のJSON形式で返してください：
+
+{
+  "genres": ["ジャンル1", "ジャンル2"],
+  "keywords": ["キーワード1", "キーワード2", "キーワード3"],
+  "searchQuery": "TMDB APIで検索するための最適なクエリ"
+}
+
+利用可能なジャンル: action, comedy, drama, horror, romance, sci-fi, thriller, animation, adventure, fantasy, mystery, crime
+
+JSON以外の説明やマークダウンは含めず、JSONのみを返してください。`;
+
+					const result = await model.generateContent(prompt);
+					const response = await result.response;
+					let analysisText = response.text().trim();
+
+					// JSONのマークダウンコードブロックを削除
+					analysisText = analysisText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+
+					analysis = JSON.parse(analysisText);
+
+					// 結果をキャッシュに保存
+					geminiCache.set(cacheKey, {
+						analysis,
+						timestamp: Date.now()
+					});
+
+					console.log('Gemini AI分析結果（APIから取得）:', analysis);
+				}
+
+				// 分析結果を使ってTMDB APIで検索
+				if (analysis.searchQuery) {
+					const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(analysis.searchQuery)}&language=ja-JP`;
+					const searchResponse = await fetch(searchUrl);
+					const searchData = await searchResponse.json();
+
+					if (searchData.results && searchData.results.length > 0) {
+						movies = searchData.results.slice(0, 6);
+					}
+				}
+
+				// 検索結果が少ない場合、ジャンルベースで補完
+				if (movies.length < 3 && analysis.genres && analysis.genres.length > 0) {
+					const genreMapping: { [key: string]: number } = {
+						action: 28,
+						adventure: 12,
+						animation: 16,
+						comedy: 35,
+						crime: 80,
+						drama: 18,
+						fantasy: 14,
+						horror: 27,
+						mystery: 9648,
+						romance: 10749,
+						'sci-fi': 878,
+						thriller: 53,
+					};
+
+					const genreIds = analysis.genres
+						.map((g: string) => genreMapping[g.toLowerCase()])
+						.filter((id: number) => id);
+
+					if (genreIds.length > 0) {
+						const discoverUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=ja-JP&sort_by=popularity.desc&with_genres=${genreIds.join(',')}&vote_count.gte=100`;
+						const discoverResponse = await fetch(discoverUrl);
+						const discoverData = await discoverResponse.json();
+
+						if (discoverData.results) {
+							// 既存の結果と重複しないように追加
+							const existingIds = new Set(movies.map((m: any) => m.id));
+							const newMovies = discoverData.results.filter(
+								(m: any) => !existingIds.has(m.id)
+							);
+							movies = [...movies, ...newMovies].slice(0, 6);
+						}
+					}
+				}
+			} catch (geminiError: any) {
+				// 429エラー（クォータ超過）の場合、サーキットブレーカーを開く
+				if (geminiError?.status === 429) {
+					openCircuitBreaker();
+					console.error('Gemini API クォータ超過により、TMDBのみで動作します:', geminiError.message);
+				} else {
+					console.error('Gemini API error, falling back to TMDB:', geminiError);
+				}
+			}
+		} else if (GEMINI_API_KEY && isCircuitBreakerOpen()) {
+			console.log('サーキットブレーカー: OPEN - Gemini APIをスキップし、TMDBのみで検索します');
+		}
+
+		// Gemini APIが失敗した場合、またはAPIキーがない場合はTMDBのみを使用
+		if (movies.length === 0) {
+			// まずキーワード検索を試みる
+			const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(mood)}&language=ja-JP`;
 			const searchResponse = await fetch(searchUrl);
 			const searchData = await searchResponse.json();
 
 			if (searchData.results && searchData.results.length > 0) {
-				return searchData.results[0];
-			}
-			return null;
-		});
+				movies = searchData.results.slice(0, 6);
+			} else {
+				// キーワード検索で結果がない場合、ジャンルベースで検索
+				const genres = getGenresByMood(mood);
+				const discoverUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=ja-JP&sort_by=popularity.desc&with_genres=${genres.join(',')}&vote_count.gte=100`;
+				const discoverResponse = await fetch(discoverUrl);
+				const discoverData = await discoverResponse.json();
 
-		const movies = (await Promise.all(moviePromises)).filter((movie) => movie !== null);
+				if (discoverData.results && discoverData.results.length > 0) {
+					movies = discoverData.results.slice(0, 6);
+				}
+			}
+		}
 
 		return json({ movies });
 	} catch (error) {
