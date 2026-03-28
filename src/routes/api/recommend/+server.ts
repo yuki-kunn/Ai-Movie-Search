@@ -64,6 +64,27 @@ function cleanupCache() {
 	}
 }
 
+// TMDB APIから複数ページを取得して指定件数を返す
+async function fetchMultiplePages(baseUrl: string, targetCount: number): Promise<any[]> {
+	const results: any[] = [];
+	const itemsPerPage = 20; // TMDB APIのデフォルト
+	const pagesToFetch = Math.ceil(targetCount / itemsPerPage);
+
+	for (let page = 1; page <= pagesToFetch && results.length < targetCount; page++) {
+		const url = `${baseUrl}&page=${page}`;
+		const response = await fetch(url);
+		const data = await response.json();
+
+		if (data.results && data.results.length > 0) {
+			results.push(...data.results);
+		} else {
+			break; // これ以上結果がない
+		}
+	}
+
+	return results.slice(0, targetCount);
+}
+
 // ムードに基づいてジャンルIDを取得
 function getGenresByMood(mood: string): number[] {
 	const lowerMood = mood.toLowerCase();
@@ -164,7 +185,8 @@ export const POST: RequestHandler = async ({ request }) => {
 				} else {
 					// キャッシュミス - Gemini APIを呼び出す
 					const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-					const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+					// 無料枠で利用可能な軽量版モデルを使用
+					const model = genAI.getGenerativeModel({ model: 'models/gemini-flash-lite-latest' });
 
 					const prompt = `ユーザーの入力: "${mood}"
 
@@ -202,16 +224,11 @@ JSON以外の説明やマークダウンは含めず、JSONのみを返してく
 				// 分析結果を使ってTMDB APIで検索
 				if (analysis.searchQuery) {
 					const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(analysis.searchQuery)}&language=ja-JP`;
-					const searchResponse = await fetch(searchUrl);
-					const searchData = await searchResponse.json();
-
-					if (searchData.results && searchData.results.length > 0) {
-						movies = searchData.results.slice(0, 6);
-					}
+					movies = await fetchMultiplePages(searchUrl, 30);
 				}
 
 				// 検索結果が少ない場合、ジャンルベースで補完
-				if (movies.length < 3 && analysis.genres && analysis.genres.length > 0) {
+				if (movies.length < 30 && analysis.genres && analysis.genres.length > 0) {
 					const genreMapping: { [key: string]: number } = {
 						action: 28,
 						adventure: 12,
@@ -233,16 +250,15 @@ JSON以外の説明やマークダウンは含めず、JSONのみを返してく
 
 					if (genreIds.length > 0) {
 						const discoverUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=ja-JP&sort_by=popularity.desc&with_genres=${genreIds.join(',')}&vote_count.gte=100`;
-						const discoverResponse = await fetch(discoverUrl);
-						const discoverData = await discoverResponse.json();
+						const discoverResults = await fetchMultiplePages(discoverUrl, 30);
 
-						if (discoverData.results) {
+						if (discoverResults.length > 0) {
 							// 既存の結果と重複しないように追加
 							const existingIds = new Set(movies.map((m: any) => m.id));
-							const newMovies = discoverData.results.filter(
+							const newMovies = discoverResults.filter(
 								(m: any) => !existingIds.has(m.id)
 							);
-							movies = [...movies, ...newMovies].slice(0, 6);
+							movies = [...movies, ...newMovies].slice(0, 30);
 						}
 					}
 				}
@@ -263,21 +279,13 @@ JSON以外の説明やマークダウンは含めず、JSONのみを返してく
 		if (movies.length === 0) {
 			// まずキーワード検索を試みる
 			const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(mood)}&language=ja-JP`;
-			const searchResponse = await fetch(searchUrl);
-			const searchData = await searchResponse.json();
+			movies = await fetchMultiplePages(searchUrl, 30);
 
-			if (searchData.results && searchData.results.length > 0) {
-				movies = searchData.results.slice(0, 6);
-			} else {
+			if (movies.length === 0) {
 				// キーワード検索で結果がない場合、ジャンルベースで検索
 				const genres = getGenresByMood(mood);
 				const discoverUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=ja-JP&sort_by=popularity.desc&with_genres=${genres.join(',')}&vote_count.gte=100`;
-				const discoverResponse = await fetch(discoverUrl);
-				const discoverData = await discoverResponse.json();
-
-				if (discoverData.results && discoverData.results.length > 0) {
-					movies = discoverData.results.slice(0, 6);
-				}
+				movies = await fetchMultiplePages(discoverUrl, 30);
 			}
 		}
 

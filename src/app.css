@@ -27,6 +27,6 @@
 
 @layer base {
   body {
-    @apply bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 min-h-screen text-white;
+    @apply bg-gradient-to-br from-slate-900 via-purple-950 to-slate-950 min-h-screen text-gray-100;
   }
 }

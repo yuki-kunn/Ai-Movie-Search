@@ -62,10 +62,10 @@
 		transition={{ duration: 0.8, ease: 'easeOut' }}
 	>
 		<div class="max-w-6xl mx-auto">
-			<h1 class="text-5xl md:text-7xl font-bold text-center mb-4 bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">
+			<h1 class="text-5xl md:text-7xl font-bold text-center mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent">
 				AI Movie Search
 			</h1>
-			<p class="text-center text-lg text-gray-300 mb-12">
+			<p class="text-center text-lg text-gray-400 mb-12">
 				あなたの気分やキーワードから、AIが最適な映画をおすすめします
 			</p>
 
@@ -76,12 +76,12 @@
 						bind:value={mood}
 						onkeypress={handleKeyPress}
 						placeholder="例: 感動的な映画、アクション満載、笑える映画..."
-						class="flex-1 px-6 py-4 rounded-2xl bg-white/10 backdrop-blur-lg border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+						class="flex-1 px-6 py-4 rounded-2xl bg-slate-800/80 backdrop-blur-lg border border-slate-700 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-purple-500"
 					/>
 					<button
 						onclick={searchMovies}
 						disabled={loading}
-						class="px-8 py-4 rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 font-semibold hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+						class="px-8 py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 font-semibold hover:from-purple-500 hover:to-pink-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-purple-500/30"
 					>
 						{loading ? '検索中...' : '検索'}
 					</button>
@@ -93,7 +93,7 @@
 
 			{#if loading}
 				<div class="flex justify-center items-center py-20">
-					<div class="animate-spin rounded-full h-16 w-16 border-4 border-purple-500 border-t-transparent"></div>
+					<div class="animate-spin rounded-full h-16 w-16 border-4 border-purple-600 border-t-transparent"></div>
 				</div>
 			{/if}
 
@@ -106,7 +106,7 @@
 							transition={{ duration: 0.6, delay: index * 0.1, ease: 'easeOut' }}
 						>
 							<div class="group cursor-pointer">
-								<div class="relative overflow-hidden rounded-2xl mb-4 aspect-[2/3] bg-white/10">
+								<div class="relative overflow-hidden rounded-2xl mb-4 aspect-[2/3] bg-slate-800/50 border border-slate-700/50 group-hover:border-purple-500/50 transition-colors duration-300">
 									{#if movie.poster_path}
 										<img
 											src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`}
@@ -114,18 +114,18 @@
 											class="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500"
 										/>
 									{:else}
-										<div class="w-full h-full flex items-center justify-center text-gray-400">
+										<div class="w-full h-full flex items-center justify-center text-gray-500">
 											No Image
 										</div>
 									{/if}
-									<div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
-										<p class="text-sm line-clamp-4">{movie.overview || '説明なし'}</p>
+									<div class="absolute inset-0 bg-gradient-to-t from-black/90 via-purple-950/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+										<p class="text-sm line-clamp-4 text-gray-200">{movie.overview || '説明なし'}</p>
 									</div>
 								</div>
-								<h3 class="text-xl font-bold mb-2 group-hover:text-purple-400 transition-colors">
+								<h3 class="text-xl font-bold mb-2 text-gray-200 group-hover:text-purple-400 transition-colors">
 									{movie.title}
 								</h3>
-								<div class="flex justify-between text-sm text-gray-400">
+								<div class="flex justify-between text-sm text-gray-500">
 									<span>{movie.release_date?.split('-')[0] || 'N/A'}</span>
 									<span class="flex items-center gap-1">
 										<svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
