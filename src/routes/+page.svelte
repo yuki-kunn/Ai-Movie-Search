@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { Motion } from 'svelte-motion';
-	import { onMount } from 'svelte';
 
 	type Movie = {
 		id: number;
@@ -15,6 +14,34 @@
 	let movies = $state<Movie[]>([]);
 	let loading = $state(false);
 	let error = $state('');
+	let currentPage = $state(1);
+	const itemsPerPage = 20;
+
+	// ページネーション用の計算
+	const totalPages = $derived(Math.ceil(movies.length / itemsPerPage));
+	const paginatedMovies = $derived(() => {
+		const start = (currentPage - 1) * itemsPerPage;
+		const end = start + itemsPerPage;
+		return movies.slice(start, end);
+	});
+
+	function goToPage(page: number) {
+		currentPage = page;
+		// ページ変更時にトップにスクロール
+		window.scrollTo({ top: 0, behavior: 'smooth' });
+	}
+
+	function nextPage() {
+		if (currentPage < totalPages) {
+			goToPage(currentPage + 1);
+		}
+	}
+
+	function prevPage() {
+		if (currentPage > 1) {
+			goToPage(currentPage - 1);
+		}
+	}
 
 	async function searchMovies() {
 		if (!mood.trim()) {
@@ -25,6 +52,7 @@
 		loading = true;
 		error = '';
 		movies = [];
+		currentPage = 1; // 検索時にページをリセット
 
 		try {
 			const response = await fetch('/api/recommend', {
@@ -98,8 +126,18 @@
 			{/if}
 
 			{#if movies.length > 0}
+				<!-- 結果の件数表示 -->
+				<div class="mb-8 text-center">
+					<p class="text-gray-400">
+						全 <span class="text-purple-400 font-bold">{movies.length}</span> 件の映画が見つかりました
+						{#if totalPages > 1}
+							（ページ {currentPage} / {totalPages}）
+						{/if}
+					</p>
+				</div>
+
 				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-					{#each movies as movie, index}
+					{#each paginatedMovies() as movie, index}
 						<Motion
 							initial={{ opacity: 0, y: 50 }}
 							animate={{ opacity: 1, y: 0 }}
@@ -138,6 +176,51 @@
 						</Motion>
 					{/each}
 				</div>
+
+				<!-- ページネーション -->
+				{#if totalPages > 1}
+					<div class="mt-12 flex justify-center items-center gap-2">
+						<!-- 前へボタン -->
+						<button
+							onclick={prevPage}
+							disabled={currentPage === 1}
+							class="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-gray-300 hover:bg-slate-700 hover:border-purple-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800 disabled:hover:border-slate-700"
+						>
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+							</svg>
+						</button>
+
+						<!-- ページ番号 -->
+						<div class="flex gap-2">
+							{#each Array.from({ length: totalPages }, (_, i) => i + 1) as page}
+								{#if page === 1 || page === totalPages || (page >= currentPage - 2 && page <= currentPage + 2)}
+									<button
+										onclick={() => goToPage(page)}
+										class="w-10 h-10 rounded-lg font-semibold transition-all {page === currentPage
+											? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30'
+											: 'bg-slate-800 border border-slate-700 text-gray-300 hover:bg-slate-700 hover:border-purple-500'}"
+									>
+										{page}
+									</button>
+								{:else if page === currentPage - 3 || page === currentPage + 3}
+									<span class="w-10 h-10 flex items-center justify-center text-gray-500">...</span>
+								{/if}
+							{/each}
+						</div>
+
+						<!-- 次へボタン -->
+						<button
+							onclick={nextPage}
+							disabled={currentPage === totalPages}
+							class="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-gray-300 hover:bg-slate-700 hover:border-purple-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800 disabled:hover:border-slate-700"
+						>
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+							</svg>
+						</button>
+					</div>
+				{/if}
 			{/if}
 		</div>
 	</Motion>
