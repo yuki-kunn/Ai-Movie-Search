@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { Motion } from 'svelte-motion';
+	import { browser } from '$app/environment';
+	import { onMount } from 'svelte';
 
 	type Movie = {
 		id: number;
@@ -10,12 +12,48 @@
 		vote_average: number;
 	};
 
+	const STORAGE_KEY = 'ai-movie-search-state';
+
 	let mood = $state('');
 	let movies = $state<Movie[]>([]);
 	let loading = $state(false);
 	let error = $state('');
 	let currentPage = $state(1);
+	let selectedMovie = $state<Movie | null>(null);
 	const itemsPerPage = 20;
+
+	// localStorageからデータを復元
+	onMount(() => {
+		if (browser) {
+			try {
+				const saved = localStorage.getItem(STORAGE_KEY);
+				if (saved) {
+					const data = JSON.parse(saved);
+					mood = data.mood || '';
+					movies = data.movies || [];
+					currentPage = data.currentPage || 1;
+				}
+			} catch (err) {
+				console.error('Failed to restore from localStorage:', err);
+			}
+		}
+	});
+
+	// データが変更されたらlocalStorageに保存
+	$effect(() => {
+		if (browser) {
+			try {
+				const data = {
+					mood,
+					movies,
+					currentPage
+				};
+				localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+			} catch (err) {
+				console.error('Failed to save to localStorage:', err);
+			}
+		}
+	});
 
 	// ページネーション用の計算
 	const totalPages = $derived(Math.ceil(movies.length / itemsPerPage));
@@ -81,6 +119,14 @@
 			searchMovies();
 		}
 	}
+
+	function openMovieDetail(movie: Movie) {
+		selectedMovie = movie;
+	}
+
+	function closeMovieDetail() {
+		selectedMovie = null;
+	}
 </script>
 
 <div class="min-h-screen">
@@ -143,7 +189,7 @@
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: 0.6, delay: index * 0.05, ease: 'easeOut' }}
 						>
-							<div class="group cursor-pointer">
+							<div class="group cursor-pointer" onclick={() => openMovieDetail(movie)}>
 								<div class="relative overflow-hidden rounded-lg sm:rounded-xl mb-2 aspect-[2/3] bg-slate-800/50 border border-slate-700/50 group-hover:border-purple-500/50 transition-colors duration-300">
 									{#if movie.poster_path}
 										<img
@@ -227,4 +273,80 @@
 			{/if}
 		</div>
 	</Motion>
+
+	<!-- 映画詳細モーダル -->
+	{#if selectedMovie}
+		<div
+			class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+			onclick={closeMovieDetail}
+			role="dialog"
+			aria-modal="true"
+		>
+			<Motion
+				initial={{ opacity: 0, scale: 0.9 }}
+				animate={{ opacity: 1, scale: 1 }}
+				transition={{ duration: 0.3, ease: 'easeOut' }}
+			>
+				<div
+					class="bg-slate-900 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-slate-700 shadow-2xl"
+					onclick={(e) => e.stopPropagation()}
+					role="document"
+				>
+					<!-- 閉じるボタン -->
+					<button
+						onclick={closeMovieDetail}
+						class="absolute top-4 right-4 p-2 rounded-full bg-slate-800/80 hover:bg-slate-700 transition-colors z-10"
+						aria-label="閉じる"
+					>
+						<svg class="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+
+					<!-- ポスター画像 -->
+					{#if selectedMovie.poster_path}
+						<div class="relative w-full aspect-[16/9] sm:aspect-[21/9] overflow-hidden rounded-t-2xl">
+							<img
+								src={`https://image.tmdb.org/t/p/original${selectedMovie.poster_path}`}
+								alt={selectedMovie.title}
+								class="w-full h-full object-cover"
+							/>
+							<div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/50 to-transparent"></div>
+						</div>
+					{/if}
+
+					<!-- コンテンツ -->
+					<div class="p-6 sm:p-8">
+						<!-- タイトルと評価 -->
+						<div class="mb-4">
+							<h2 class="text-2xl sm:text-3xl font-bold text-gray-100 mb-3">
+								{selectedMovie.title}
+							</h2>
+							<div class="flex items-center gap-4 text-sm text-gray-400">
+								<span class="flex items-center gap-1">
+									<svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+										<path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+									</svg>
+									<span class="text-lg font-semibold text-gray-200">{selectedMovie.vote_average.toFixed(1)}</span>
+								</span>
+								{#if selectedMovie.release_date}
+									<span>
+										公開: {selectedMovie.release_date}
+									</span>
+								{/if}
+							</div>
+						</div>
+
+						<!-- 概要 -->
+						<div class="mb-6">
+							<h3 class="text-lg font-semibold text-gray-200 mb-2">概要</h3>
+							<p class="text-gray-300 leading-relaxed">
+								{selectedMovie.overview || '概要情報がありません'}
+							</p>
+						</div>
+					</div>
+				</div>
+			</Motion>
+		</div>
+	{/if}
 </div>
