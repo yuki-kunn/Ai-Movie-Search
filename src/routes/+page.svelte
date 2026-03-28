@@ -12,6 +12,23 @@
 		vote_average: number;
 	};
 
+	type Provider = {
+		provider_id: number;
+		provider_name: string;
+		logo_path: string;
+	};
+
+	type MovieDetail = {
+		homepage: string | null;
+		imdb_id: string | null;
+		providers: {
+			link: string | null;
+			flatrate: Provider[];
+			rent: Provider[];
+			buy: Provider[];
+		};
+	};
+
 	const STORAGE_KEY = 'ai-movie-search-state';
 
 	let mood = $state('');
@@ -20,6 +37,8 @@
 	let error = $state('');
 	let currentPage = $state(1);
 	let selectedMovie = $state<Movie | null>(null);
+	let movieDetail = $state<MovieDetail | null>(null);
+	let loadingDetail = $state(false);
 	const itemsPerPage = 20;
 
 	// localStorageからデータを復元
@@ -120,12 +139,26 @@
 		}
 	}
 
-	function openMovieDetail(movie: Movie) {
+	async function openMovieDetail(movie: Movie) {
 		selectedMovie = movie;
+		movieDetail = null;
+		loadingDetail = true;
+
+		try {
+			const response = await fetch(`/api/movie/${movie.id}`);
+			if (response.ok) {
+				movieDetail = await response.json();
+			}
+		} catch (err) {
+			console.error('Failed to fetch movie details:', err);
+		} finally {
+			loadingDetail = false;
+		}
 	}
 
 	function closeMovieDetail() {
 		selectedMovie = null;
+		movieDetail = null;
 	}
 </script>
 
@@ -344,6 +377,183 @@
 								{selectedMovie.overview || '概要情報がありません'}
 							</p>
 						</div>
+
+						<!-- リンク情報 -->
+						{#if loadingDetail}
+							<div class="flex justify-center py-4">
+								<div class="animate-spin rounded-full h-8 w-8 border-2 border-purple-600 border-t-transparent"></div>
+							</div>
+						{:else if movieDetail}
+							<!-- 公式サイトとIMDb -->
+							{#if movieDetail.homepage || movieDetail.imdb_id}
+								<div class="mb-6">
+									<h3 class="text-lg font-semibold text-gray-200 mb-3">公式リンク</h3>
+									<div class="flex flex-wrap gap-2">
+										{#if movieDetail.homepage}
+											<a
+												href={movieDetail.homepage}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg text-white font-medium transition-all"
+											>
+												<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+												</svg>
+												公式サイト
+											</a>
+										{/if}
+										{#if movieDetail.imdb_id}
+											<a
+												href={`https://www.imdb.com/title/${movieDetail.imdb_id}`}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="inline-flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-500 rounded-lg text-white font-medium transition-all"
+											>
+												<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+													<path d="M22 12c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2s10 4.477 10 10z"/>
+													<path fill="#000" d="M8.5 8.5h1.5v7H8.5v-7zm2.5 0h1.75l1 3.5 1-3.5H16.5v7h-1.25v-5l-1.25 5h-1l-1.25-5v5H10.5v-7z"/>
+												</svg>
+												IMDb
+											</a>
+										{/if}
+									</div>
+								</div>
+							{/if}
+
+							<!-- 配信サービス -->
+							{#if movieDetail.providers.flatrate.length > 0 || movieDetail.providers.rent.length > 0 || movieDetail.providers.buy.length > 0}
+								<div class="mb-4">
+									<h3 class="text-lg font-semibold text-gray-200 mb-3">配信サービス</h3>
+									<p class="text-xs text-gray-500 mb-3">※クリックすると配信サービスの視聴ページに移動します</p>
+
+									<!-- サブスク配信 -->
+									{#if movieDetail.providers.flatrate.length > 0}
+										<div class="mb-4">
+											<h4 class="text-sm font-medium text-gray-400 mb-2">見放題配信</h4>
+											<div class="flex flex-wrap gap-3">
+												{#each movieDetail.providers.flatrate as provider}
+													{#if movieDetail.providers.link}
+														<a
+															href={movieDetail.providers.link}
+															target="_blank"
+															rel="noopener noreferrer"
+															class="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 hover:border-purple-500 transition-all cursor-pointer"
+														>
+															{#if provider.logo_path}
+																<img
+																	src={`https://image.tmdb.org/t/p/w92${provider.logo_path}`}
+																	alt={provider.provider_name}
+																	class="w-8 h-8 rounded"
+																/>
+															{/if}
+															<span class="text-sm text-gray-300">{provider.provider_name}</span>
+															<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+																<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+															</svg>
+														</a>
+													{:else}
+														<div class="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-lg border border-slate-700">
+															{#if provider.logo_path}
+																<img
+																	src={`https://image.tmdb.org/t/p/w92${provider.logo_path}`}
+																	alt={provider.provider_name}
+																	class="w-8 h-8 rounded"
+																/>
+															{/if}
+															<span class="text-sm text-gray-300">{provider.provider_name}</span>
+														</div>
+													{/if}
+												{/each}
+											</div>
+										</div>
+									{/if}
+
+									<!-- レンタル -->
+									{#if movieDetail.providers.rent.length > 0}
+										<div class="mb-4">
+											<h4 class="text-sm font-medium text-gray-400 mb-2">レンタル</h4>
+											<div class="flex flex-wrap gap-3">
+												{#each movieDetail.providers.rent as provider}
+													{#if movieDetail.providers.link}
+														<a
+															href={movieDetail.providers.link}
+															target="_blank"
+															rel="noopener noreferrer"
+															class="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 hover:border-purple-500 transition-all cursor-pointer"
+														>
+															{#if provider.logo_path}
+																<img
+																	src={`https://image.tmdb.org/t/p/w92${provider.logo_path}`}
+																	alt={provider.provider_name}
+																	class="w-8 h-8 rounded"
+																/>
+															{/if}
+															<span class="text-sm text-gray-300">{provider.provider_name}</span>
+															<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+																<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+															</svg>
+														</a>
+													{:else}
+														<div class="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-lg border border-slate-700">
+															{#if provider.logo_path}
+																<img
+																	src={`https://image.tmdb.org/t/p/w92${provider.logo_path}`}
+																	alt={provider.provider_name}
+																	class="w-8 h-8 rounded"
+																/>
+															{/if}
+															<span class="text-sm text-gray-300">{provider.provider_name}</span>
+														</div>
+													{/if}
+												{/each}
+											</div>
+										</div>
+									{/if}
+
+									<!-- 購入 -->
+									{#if movieDetail.providers.buy.length > 0}
+										<div class="mb-4">
+											<h4 class="text-sm font-medium text-gray-400 mb-2">購入</h4>
+											<div class="flex flex-wrap gap-3">
+												{#each movieDetail.providers.buy as provider}
+													{#if movieDetail.providers.link}
+														<a
+															href={movieDetail.providers.link}
+															target="_blank"
+															rel="noopener noreferrer"
+															class="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 hover:border-purple-500 transition-all cursor-pointer"
+														>
+															{#if provider.logo_path}
+																<img
+																	src={`https://image.tmdb.org/t/p/w92${provider.logo_path}`}
+																	alt={provider.provider_name}
+																	class="w-8 h-8 rounded"
+																/>
+															{/if}
+															<span class="text-sm text-gray-300">{provider.provider_name}</span>
+															<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+																<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+															</svg>
+														</a>
+													{:else}
+														<div class="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-lg border border-slate-700">
+															{#if provider.logo_path}
+																<img
+																	src={`https://image.tmdb.org/t/p/w92${provider.logo_path}`}
+																	alt={provider.provider_name}
+																	class="w-8 h-8 rounded"
+																/>
+															{/if}
+															<span class="text-sm text-gray-300">{provider.provider_name}</span>
+														</div>
+													{/if}
+												{/each}
+											</div>
+										</div>
+									{/if}
+								</div>
+							{/if}
+						{/if}
 					</div>
 				</div>
 			</Motion>
