@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { Motion } from 'svelte-motion';
-	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { favoritesStore } from '$lib/stores/favorites.svelte';
+	import { goto } from '$app/navigation';
 
 	type Movie = {
 		id: number;
@@ -31,188 +31,27 @@
 		};
 	};
 
-	const STORAGE_KEY = 'ai-movie-search-state';
-
-	type Language = 'ja' | 'en';
-
-	let mood = $state('');
-	let movies = $state<Movie[]>([]);
-	let loading = $state(false);
-	let error = $state('');
-	let currentPage = $state(1);
 	let selectedMovie = $state<Movie | null>(null);
 	let movieDetail = $state<MovieDetail | null>(null);
 	let loadingDetail = $state(false);
-	let language = $state<Language>('ja');
-	let movieIds = $state<number[]>([]); // 映画IDリストを保持
-	const itemsPerPage = 20;
+	let language = $state<'ja' | 'en'>('ja');
 
-	// localStorageからデータを復元
-	onMount(() => {
-		if (browser) {
-			try {
-				const saved = localStorage.getItem(STORAGE_KEY);
-				if (saved) {
-					const data = JSON.parse(saved);
-					mood = data.mood || '';
-					movies = data.movies || [];
-					currentPage = data.currentPage || 1;
-					movieIds = data.movieIds || [];
-				}
-
-				// 言語設定を別途読み込み
-				const savedLang = localStorage.getItem('ai-movie-search-language');
-				if (savedLang === 'ja' || savedLang === 'en') {
-					language = savedLang;
-				}
-			} catch (err) {
-				console.error('Failed to restore from localStorage:', err);
-			}
-		}
-	});
-
-	// データが変更されたらlocalStorageに保存
-	$effect(() => {
-		if (browser) {
-			try {
-				const data = {
-					mood,
-					movies,
-					currentPage,
-					movieIds
-				};
-				localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-			} catch (err) {
-				console.error('Failed to save to localStorage:', err);
-			}
-		}
-	});
-
-	// ページネーション用の計算
-	const totalPages = $derived(Math.ceil(movies.length / itemsPerPage));
-	const paginatedMovies = $derived(() => {
-		const start = (currentPage - 1) * itemsPerPage;
-		const end = start + itemsPerPage;
-		return movies.slice(start, end);
-	});
-
-	function goToPage(page: number) {
-		currentPage = page;
-		// ページ変更時にトップにスクロール
-		window.scrollTo({ top: 0, behavior: 'smooth' });
-	}
-
-	function nextPage() {
-		if (currentPage < totalPages) {
-			goToPage(currentPage + 1);
-		}
-	}
-
-	function prevPage() {
-		if (currentPage > 1) {
-			goToPage(currentPage - 1);
-		}
-	}
-
-	async function searchMovies() {
-		if (!mood.trim()) {
-			error = language === 'ja' ? '気分やキーワードを入力してください' : 'Please enter a mood or keyword';
+	onMount(async () => {
+		// 未ログインの場合はトップページへ
+		if (!authStore.user) {
+			goto('/');
 			return;
 		}
 
-		loading = true;
-		error = '';
-		movies = [];
-		currentPage = 1; // 検索時にページをリセット
+		// お気に入りを読み込み
+		await favoritesStore.loadFavorites();
 
-		try {
-			const response = await fetch('/api/recommend', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({ mood, language }),
-			});
-
-			if (!response.ok) {
-				throw new Error(language === 'ja' ? '映画の検索に失敗しました' : 'Failed to search movies');
-			}
-
-			const data = await response.json();
-			movies = data.movies;
-			// 映画IDリストを保存
-			movieIds = movies.map(m => m.id);
-		} catch (err) {
-			error = err instanceof Error ? err.message : (language === 'ja' ? '予期しないエラーが発生しました' : 'An unexpected error occurred');
-		} finally {
-			loading = false;
+		// localStorageから言語設定を取得
+		const savedLang = localStorage.getItem('ai-movie-search-language');
+		if (savedLang === 'ja' || savedLang === 'en') {
+			language = savedLang;
 		}
-	}
-
-	async function switchLanguage(lang: Language) {
-		if (language === lang) return; // 同じ言語なら何もしない
-
-		language = lang;
-
-		// 映画IDリストが存在する場合は、同じ映画を新しい言語で取得
-		if (movieIds.length > 0) {
-			loading = true;
-			error = '';
-			const previousPage = currentPage;
-			const selectedMovieId = selectedMovie?.id; // モーダルで開いている映画のIDを保持
-
-			try {
-				const response = await fetch('/api/movies', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					body: JSON.stringify({ movieIds, language: lang }),
-				});
-
-				if (!response.ok) {
-					throw new Error(lang === 'ja' ? '映画の取得に失敗しました' : 'Failed to fetch movies');
-				}
-
-				const data = await response.json();
-				movies = data.movies;
-				currentPage = previousPage; // ページ位置を保持
-
-				// モーダルが開いている場合は、selectedMovieオブジェクトを更新
-				if (selectedMovieId) {
-					const updatedMovie = movies.find(m => m.id === selectedMovieId);
-					if (updatedMovie) {
-						selectedMovie = updatedMovie;
-					}
-				}
-			} catch (err) {
-				error = err instanceof Error ? err.message : (lang === 'ja' ? '予期しないエラーが発生しました' : 'An unexpected error occurred');
-			} finally {
-				loading = false;
-			}
-		}
-
-		// モーダルが開いている場合は、新しい言語で詳細情報を再取得
-		if (selectedMovie) {
-			loadingDetail = true;
-			try {
-				const response = await fetch(`/api/movie/${selectedMovie.id}?language=${lang}`);
-				if (response.ok) {
-					movieDetail = await response.json();
-				}
-			} catch (err) {
-				console.error('Failed to fetch movie details:', err);
-			} finally {
-				loadingDetail = false;
-			}
-		}
-	}
-
-	function handleKeyPress(event: KeyboardEvent) {
-		if (event.key === 'Enter') {
-			searchMovies();
-		}
-	}
+	});
 
 	async function openMovieDetail(movie: Movie) {
 		selectedMovie = movie;
@@ -235,72 +74,56 @@
 		selectedMovie = null;
 		movieDetail = null;
 	}
+
+	async function handleRemoveFavorite(movieId: number, event: Event) {
+		event.stopPropagation();
+		await favoritesStore.removeFavorite(movieId);
+	}
 </script>
 
-<div class="min-h-screen">
+<div class="min-h-screen pb-20">
 	<Motion
 		initial={{ opacity: 0, y: -50 }}
 		animate={{ opacity: 1, y: 0 }}
 		transition={{ duration: 0.8, ease: 'easeOut' }}
 	>
-		<div class="w-full max-w-7xl mx-auto px-3 sm:px-4 pt-4 sm:pt-6 md:pt-8">
-			<h1 class="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-center mb-3 sm:mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent">
-				AI Movie Search
+		<div class="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 pt-4 sm:pt-6 md:pt-8">
+			<h1 class="text-3xl sm:text-4xl md:text-5xl font-bold text-center mb-3 sm:mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent">
+				{language === 'ja' ? 'お気に入り' : 'My Favorites'}
 			</h1>
-			<p class="text-center text-sm sm:text-base md:text-lg text-gray-400 mb-6 sm:mb-8 md:mb-10 px-3 sm:px-4">
+			<p class="text-center text-sm sm:text-base text-gray-400 mb-6 sm:mb-8">
 				{language === 'ja'
-					? 'あなたの気分やキーワードから、AIが最適な映画をおすすめします'
-					: 'AI recommends the best movies based on your mood and keywords'}
+					? 'お気に入りに登録した映画一覧'
+					: 'Your favorite movies collection'}
 			</p>
 
-			<div class="mb-6 sm:mb-8 md:mb-10">
-				<div class="flex flex-col sm:flex-row gap-2 sm:gap-3 md:gap-4 max-w-2xl mx-auto px-3 sm:px-4 md:px-6">
-					<input
-						type="text"
-						bind:value={mood}
-						onkeypress={handleKeyPress}
-						placeholder={language === 'ja' ? '例: 感動的な映画、アクション満載...' : 'e.g. Heartwarming movie, Action-packed...'}
-						class="flex-1 px-4 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-slate-800/80 backdrop-blur-lg border border-slate-700 text-gray-100 placeholder-gray-500 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-purple-500"
-					/>
-					<button
-						onclick={searchMovies}
-						disabled={loading}
-						class="px-6 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 font-semibold hover:from-purple-500 hover:to-pink-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-purple-500/30 text-sm sm:text-base whitespace-nowrap"
-					>
-						{loading ? (language === 'ja' ? '検索中...' : 'Searching...') : (language === 'ja' ? '検索' : 'Search')}
-					</button>
-				</div>
-				{#if error}
-					<p class="text-red-400 text-center mt-3 sm:mt-4 text-sm sm:text-base px-3 sm:px-4">{error}</p>
-				{/if}
-			</div>
-
-			{#if loading}
+			{#if favoritesStore.loading}
 				<div class="flex justify-center items-center py-12 sm:py-16 md:py-20">
 					<div class="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-4 border-purple-600 border-t-transparent"></div>
 				</div>
-			{/if}
-
-			{#if movies.length > 0}
-				<!-- 結果の件数表示 -->
-				<div class="mb-4 sm:mb-6 text-center px-3 sm:px-4">
+			{:else if favoritesStore.favorites.length === 0}
+				<div class="text-center py-12 sm:py-16 md:py-20">
+					<svg class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+					</svg>
+					<p class="text-gray-400 text-lg">
+						{language === 'ja' ? 'お気に入りはまだありません' : 'No favorites yet'}
+					</p>
+					<p class="text-gray-500 text-sm mt-2">
+						{language === 'ja'
+							? '映画を検索して、星アイコンをクリックしてお気に入りに追加しましょう'
+							: 'Search for movies and click the star icon to add favorites'}
+					</p>
+				</div>
+			{:else}
+				<div class="mb-4 sm:mb-6 text-center">
 					<p class="text-sm sm:text-base text-gray-400">
-						{#if language === 'ja'}
-							全 <span class="text-purple-400 font-bold">{movies.length}</span> 件の映画が見つかりました
-							{#if totalPages > 1}
-								<span class="block sm:inline mt-1 sm:mt-0">（ページ {currentPage} / {totalPages}）</span>
-							{/if}
-						{:else}
-							Found <span class="text-purple-400 font-bold">{movies.length}</span> movies
-							{#if totalPages > 1}
-								<span class="block sm:inline mt-1 sm:mt-0">(Page {currentPage} / {totalPages})</span>
-							{/if}
-						{/if}
+						{language === 'ja' ? '全' : 'Total'} <span class="text-purple-400 font-bold">{favoritesStore.favorites.length}</span> {language === 'ja' ? '件' : 'movies'}
 					</p>
 				</div>
 
-				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-5 lg:gap-6 px-3 sm:px-4 md:px-6">
-					{#each paginatedMovies() as movie, index}
+				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
+					{#each favoritesStore.favorites as movie, index}
 						<Motion
 							initial={{ opacity: 0, y: 50 }}
 							animate={{ opacity: 1, y: 0 }}
@@ -308,20 +131,15 @@
 						>
 							<div class="group cursor-pointer relative">
 								<!-- お気に入りボタン -->
-								{#if authStore.user}
-									<button
-										onclick={(e) => {
-											e.stopPropagation();
-											favoritesStore.toggleFavorite(movie);
-										}}
-										class="absolute top-2 right-2 z-10 p-1.5 bg-black/60 hover:bg-black/80 rounded-full transition-all"
-										aria-label={favoritesStore.isFavorite(movie.id) ? 'Remove from favorites' : 'Add to favorites'}
-									>
-										<svg class="w-5 h-5 text-yellow-400 {favoritesStore.isFavorite(movie.id) ? 'fill-current' : ''}" viewBox="0 0 20 20" fill={favoritesStore.isFavorite(movie.id) ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.5">
-											<path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-										</svg>
-									</button>
-								{/if}
+								<button
+									onclick={(e) => handleRemoveFavorite(movie.id, e)}
+									class="absolute top-2 right-2 z-10 p-1.5 bg-black/60 hover:bg-black/80 rounded-full transition-all"
+									aria-label="Remove from favorites"
+								>
+									<svg class="w-5 h-5 text-yellow-400 fill-current" viewBox="0 0 20 20">
+										<path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+									</svg>
+								</button>
 
 								<div onclick={() => openMovieDetail(movie)} class="relative overflow-hidden rounded-lg sm:rounded-xl mb-2 aspect-[2/3] bg-slate-800/50 border border-slate-700/50 group-hover:border-purple-500/50 transition-colors duration-300">
 									{#if movie.poster_path}
@@ -336,7 +154,7 @@
 										</div>
 									{/if}
 									<div class="absolute inset-0 bg-gradient-to-t from-black/90 via-purple-950/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-2 sm:p-3">
-										<p class="text-xs line-clamp-3 text-gray-200">{movie.overview || '説明なし'}</p>
+										<p class="text-xs line-clamp-3 text-gray-200">{movie.overview || (language === 'ja' ? '説明なし' : 'No overview')}</p>
 									</div>
 								</div>
 								<h3 class="text-xs sm:text-sm md:text-base font-bold mb-1 text-gray-200 group-hover:text-purple-400 transition-colors line-clamp-2">
@@ -355,54 +173,6 @@
 						</Motion>
 					{/each}
 				</div>
-
-				<!-- ページネーション -->
-				{#if totalPages > 1}
-					<div class="mt-6 sm:mt-8 md:mt-10 pb-4 sm:pb-6 flex justify-center items-center gap-1.5 sm:gap-2 px-3 sm:px-4">
-						<!-- 前へボタン -->
-						<button
-							onclick={prevPage}
-							disabled={currentPage === 1}
-							class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-gray-300 hover:bg-slate-700 hover:border-purple-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800 disabled:hover:border-slate-700 flex-shrink-0"
-							aria-label="前のページ"
-						>
-							<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-							</svg>
-						</button>
-
-						<!-- ページ番号 -->
-						<div class="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide">
-							{#each Array.from({ length: totalPages }, (_, i) => i + 1) as page}
-								<!-- モバイル: 現在ページ±1、PC: 現在ページ±2 -->
-								{#if page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)}
-									<button
-										onclick={() => goToPage(page)}
-										class="min-w-[32px] h-8 sm:min-w-[40px] sm:h-10 px-2 rounded-lg font-semibold transition-all text-xs sm:text-base flex-shrink-0 {page === currentPage
-											? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30'
-											: 'bg-slate-800 border border-slate-700 text-gray-300 hover:bg-slate-700 hover:border-purple-500'}"
-									>
-										{page}
-									</button>
-								{:else if page === currentPage - 2 || page === currentPage + 2}
-									<span class="min-w-[32px] h-8 sm:min-w-[40px] sm:h-10 flex items-center justify-center text-gray-500 text-xs sm:text-base flex-shrink-0">...</span>
-								{/if}
-							{/each}
-						</div>
-
-						<!-- 次へボタン -->
-						<button
-							onclick={nextPage}
-							disabled={currentPage === totalPages}
-							class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-gray-300 hover:bg-slate-700 hover:border-purple-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800 disabled:hover:border-slate-700 flex-shrink-0"
-							aria-label="次のページ"
-						>
-							<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-							</svg>
-						</button>
-					</div>
-				{/if}
 			{/if}
 		</div>
 	</Motion>
@@ -429,7 +199,7 @@
 					<button
 						onclick={closeMovieDetail}
 						class="absolute top-4 right-4 p-2 rounded-full bg-slate-800/80 hover:bg-slate-700 transition-colors z-10"
-						aria-label="閉じる"
+						aria-label={language === 'ja' ? '閉じる' : 'Close'}
 					>
 						<svg class="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
