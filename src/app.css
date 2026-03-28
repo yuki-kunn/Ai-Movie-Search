@@ -30,3 +30,15 @@
     @apply bg-gradient-to-br from-slate-900 via-purple-950 to-slate-950 min-h-screen text-gray-100;
   }
 }
+
+@layer utilities {
+  /* スクロールバーを非表示にする */
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+  }
+}

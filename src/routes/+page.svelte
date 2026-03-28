@@ -83,68 +83,68 @@
 	}
 </script>
 
-<div class="min-h-screen p-8">
+<div class="min-h-screen">
 	<Motion
 		initial={{ opacity: 0, y: -50 }}
 		animate={{ opacity: 1, y: 0 }}
 		transition={{ duration: 0.8, ease: 'easeOut' }}
 	>
-		<div class="max-w-6xl mx-auto">
-			<h1 class="text-5xl md:text-7xl font-bold text-center mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent">
+		<div class="w-full max-w-7xl mx-auto">
+			<h1 class="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-center mb-3 sm:mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent px-3 sm:px-4 pt-4 sm:pt-6 md:pt-8">
 				AI Movie Search
 			</h1>
-			<p class="text-center text-lg text-gray-400 mb-12">
+			<p class="text-center text-sm sm:text-base md:text-lg text-gray-400 mb-6 sm:mb-8 md:mb-10 px-3 sm:px-4">
 				あなたの気分やキーワードから、AIが最適な映画をおすすめします
 			</p>
 
-			<div class="mb-12">
-				<div class="flex gap-4 max-w-2xl mx-auto">
+			<div class="mb-6 sm:mb-8 md:mb-10">
+				<div class="flex flex-col sm:flex-row gap-2 sm:gap-3 md:gap-4 max-w-2xl mx-auto px-3 sm:px-4 md:px-6">
 					<input
 						type="text"
 						bind:value={mood}
 						onkeypress={handleKeyPress}
-						placeholder="例: 感動的な映画、アクション満載、笑える映画..."
-						class="flex-1 px-6 py-4 rounded-2xl bg-slate-800/80 backdrop-blur-lg border border-slate-700 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-purple-500"
+						placeholder="例: 感動的な映画、アクション満載..."
+						class="flex-1 px-4 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-slate-800/80 backdrop-blur-lg border border-slate-700 text-gray-100 placeholder-gray-500 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-purple-500"
 					/>
 					<button
 						onclick={searchMovies}
 						disabled={loading}
-						class="px-8 py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 font-semibold hover:from-purple-500 hover:to-pink-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-purple-500/30"
+						class="px-6 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 font-semibold hover:from-purple-500 hover:to-pink-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-purple-500/30 text-sm sm:text-base whitespace-nowrap"
 					>
 						{loading ? '検索中...' : '検索'}
 					</button>
 				</div>
 				{#if error}
-					<p class="text-red-400 text-center mt-4">{error}</p>
+					<p class="text-red-400 text-center mt-3 sm:mt-4 text-sm sm:text-base px-3 sm:px-4">{error}</p>
 				{/if}
 			</div>
 
 			{#if loading}
-				<div class="flex justify-center items-center py-20">
-					<div class="animate-spin rounded-full h-16 w-16 border-4 border-purple-600 border-t-transparent"></div>
+				<div class="flex justify-center items-center py-12 sm:py-16 md:py-20">
+					<div class="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-4 border-purple-600 border-t-transparent"></div>
 				</div>
 			{/if}
 
 			{#if movies.length > 0}
 				<!-- 結果の件数表示 -->
-				<div class="mb-8 text-center">
-					<p class="text-gray-400">
+				<div class="mb-4 sm:mb-6 text-center px-3 sm:px-4">
+					<p class="text-sm sm:text-base text-gray-400">
 						全 <span class="text-purple-400 font-bold">{movies.length}</span> 件の映画が見つかりました
 						{#if totalPages > 1}
-							（ページ {currentPage} / {totalPages}）
+							<span class="block sm:inline mt-1 sm:mt-0">（ページ {currentPage} / {totalPages}）</span>
 						{/if}
 					</p>
 				</div>
 
-				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-5 lg:gap-6 px-3 sm:px-4 md:px-6">
 					{#each paginatedMovies() as movie, index}
 						<Motion
 							initial={{ opacity: 0, y: 50 }}
 							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.6, delay: index * 0.1, ease: 'easeOut' }}
+							transition={{ duration: 0.6, delay: index * 0.05, ease: 'easeOut' }}
 						>
 							<div class="group cursor-pointer">
-								<div class="relative overflow-hidden rounded-2xl mb-4 aspect-[2/3] bg-slate-800/50 border border-slate-700/50 group-hover:border-purple-500/50 transition-colors duration-300">
+								<div class="relative overflow-hidden rounded-lg sm:rounded-xl mb-2 aspect-[2/3] bg-slate-800/50 border border-slate-700/50 group-hover:border-purple-500/50 transition-colors duration-300">
 									{#if movie.poster_path}
 										<img
 											src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`}
@@ -152,21 +152,21 @@
 											class="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500"
 										/>
 									{:else}
-										<div class="w-full h-full flex items-center justify-center text-gray-500">
+										<div class="w-full h-full flex items-center justify-center text-gray-500 text-xs">
 											No Image
 										</div>
 									{/if}
-									<div class="absolute inset-0 bg-gradient-to-t from-black/90 via-purple-950/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
-										<p class="text-sm line-clamp-4 text-gray-200">{movie.overview || '説明なし'}</p>
+									<div class="absolute inset-0 bg-gradient-to-t from-black/90 via-purple-950/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-2 sm:p-3">
+										<p class="text-xs line-clamp-3 text-gray-200">{movie.overview || '説明なし'}</p>
 									</div>
 								</div>
-								<h3 class="text-xl font-bold mb-2 text-gray-200 group-hover:text-purple-400 transition-colors">
+								<h3 class="text-xs sm:text-sm md:text-base font-bold mb-1 text-gray-200 group-hover:text-purple-400 transition-colors line-clamp-2">
 									{movie.title}
 								</h3>
-								<div class="flex justify-between text-sm text-gray-500">
-									<span>{movie.release_date?.split('-')[0] || 'N/A'}</span>
-									<span class="flex items-center gap-1">
-										<svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+								<div class="flex justify-between items-center text-[10px] sm:text-xs text-gray-500">
+									<span class="truncate">{movie.release_date?.split('-')[0] || 'N/A'}</span>
+									<span class="flex items-center gap-0.5 sm:gap-1 flex-shrink-0 ml-1">
+										<svg class="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
 											<path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
 										</svg>
 										{movie.vote_average.toFixed(1)}
@@ -179,32 +179,34 @@
 
 				<!-- ページネーション -->
 				{#if totalPages > 1}
-					<div class="mt-12 flex justify-center items-center gap-2">
+					<div class="mt-6 sm:mt-8 md:mt-10 pb-4 sm:pb-6 flex justify-center items-center gap-1.5 sm:gap-2 px-3 sm:px-4">
 						<!-- 前へボタン -->
 						<button
 							onclick={prevPage}
 							disabled={currentPage === 1}
-							class="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-gray-300 hover:bg-slate-700 hover:border-purple-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800 disabled:hover:border-slate-700"
+							class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-gray-300 hover:bg-slate-700 hover:border-purple-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800 disabled:hover:border-slate-700 flex-shrink-0"
+							aria-label="前のページ"
 						>
-							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 							</svg>
 						</button>
 
 						<!-- ページ番号 -->
-						<div class="flex gap-2">
+						<div class="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide">
 							{#each Array.from({ length: totalPages }, (_, i) => i + 1) as page}
-								{#if page === 1 || page === totalPages || (page >= currentPage - 2 && page <= currentPage + 2)}
+								<!-- モバイル: 現在ページ±1、PC: 現在ページ±2 -->
+								{#if page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)}
 									<button
 										onclick={() => goToPage(page)}
-										class="w-10 h-10 rounded-lg font-semibold transition-all {page === currentPage
+										class="min-w-[32px] h-8 sm:min-w-[40px] sm:h-10 px-2 rounded-lg font-semibold transition-all text-xs sm:text-base flex-shrink-0 {page === currentPage
 											? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30'
 											: 'bg-slate-800 border border-slate-700 text-gray-300 hover:bg-slate-700 hover:border-purple-500'}"
 									>
 										{page}
 									</button>
-								{:else if page === currentPage - 3 || page === currentPage + 3}
-									<span class="w-10 h-10 flex items-center justify-center text-gray-500">...</span>
+								{:else if page === currentPage - 2 || page === currentPage + 2}
+									<span class="min-w-[32px] h-8 sm:min-w-[40px] sm:h-10 flex items-center justify-center text-gray-500 text-xs sm:text-base flex-shrink-0">...</span>
 								{/if}
 							{/each}
 						</div>
@@ -213,9 +215,10 @@
 						<button
 							onclick={nextPage}
 							disabled={currentPage === totalPages}
-							class="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-gray-300 hover:bg-slate-700 hover:border-purple-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800 disabled:hover:border-slate-700"
+							class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-gray-300 hover:bg-slate-700 hover:border-purple-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800 disabled:hover:border-slate-700 flex-shrink-0"
+							aria-label="次のページ"
 						>
-							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 							</svg>
 						</button>
