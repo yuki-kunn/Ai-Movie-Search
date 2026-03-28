@@ -18,7 +18,7 @@ const MAX_CACHE_SIZE = 100; // 最大キャッシュエントリー数
 // サーキットブレーカー
 let circuitBreakerOpen = false;
 let circuitBreakerOpenTime = 0;
-const CIRCUIT_BREAKER_TIMEOUT = 30 * 60 * 1000; // 30分
+const CIRCUIT_BREAKER_TIMEOUT = 10 * 60 * 1000; // 10分（503エラーは一時的なことが多いため短めに設定）
 
 // サーキットブレーカーの状態をチェック
 function isCircuitBreakerOpen(): boolean {
@@ -41,7 +41,7 @@ function openCircuitBreaker() {
 	if (!circuitBreakerOpen) {
 		circuitBreakerOpen = true;
 		circuitBreakerOpenTime = Date.now();
-		const minutes = CIRCUIT_BREAKER_TIMEOUT / 60 / 1000;
+		const minutes = Math.floor(CIRCUIT_BREAKER_TIMEOUT / 60 / 1000);
 		console.log(`サーキットブレーカー: OPEN - Gemini APIの使用を${minutes}分間停止します`);
 	}
 }
@@ -124,11 +124,14 @@ function getGenresByMood(mood: string): number[] {
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const { mood } = await request.json();
+		const { mood, language = 'ja', skipAI = false } = await request.json();
 
 		if (!mood) {
-			return json({ error: '気分やキーワードを入力してください' }, { status: 400 });
+			const errorMsg = language === 'ja' ? '気分やキーワードを入力してください' : 'Please enter a mood or keyword';
+			return json({ error: errorMsg }, { status: 400 });
 		}
+
+		const tmdbLanguage = language === 'ja' ? 'ja-JP' : 'en-US';
 
 		if (!TMDB_API_KEY) {
 			console.error('TMDB APIキーが設定されていません');
@@ -165,8 +168,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		let movies: any[] = [];
 
-		// Gemini APIが利用可能な場合は使用して入力を解釈
-		if (GEMINI_API_KEY && !isCircuitBreakerOpen()) {
+		// Gemini APIが利用可能な場合は使用して入力を解釈（skipAIがfalseの場合のみ）
+		if (GEMINI_API_KEY && !isCircuitBreakerOpen() && !skipAI) {
 			try {
 				// キャッシュのクリーンアップ
 				cleanupCache();
@@ -223,7 +226,7 @@ JSON以外の説明やマークダウンは含めず、JSONのみを返してく
 
 				// 分析結果を使ってTMDB APIで検索
 				if (analysis.searchQuery) {
-					const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(analysis.searchQuery)}&language=ja-JP`;
+					const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(analysis.searchQuery)}&language=${tmdbLanguage}`;
 					movies = await fetchMultiplePages(searchUrl, 30);
 				}
 
@@ -249,7 +252,7 @@ JSON以外の説明やマークダウンは含めず、JSONのみを返してく
 						.filter((id: number) => id);
 
 					if (genreIds.length > 0) {
-						const discoverUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=ja-JP&sort_by=popularity.desc&with_genres=${genreIds.join(',')}&vote_count.gte=100`;
+						const discoverUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=${tmdbLanguage}&sort_by=popularity.desc&with_genres=${genreIds.join(',')}&vote_count.gte=100`;
 						const discoverResults = await fetchMultiplePages(discoverUrl, 30);
 
 						if (discoverResults.length > 0) {
@@ -263,10 +266,11 @@ JSON以外の説明やマークダウンは含めず、JSONのみを返してく
 					}
 				}
 			} catch (geminiError: any) {
-				// 429エラー（クォータ超過）の場合、サーキットブレーカーを開く
-				if (geminiError?.status === 429) {
+				// 429エラー（クォータ超過）または503エラー（サービス過負荷）の場合、サーキットブレーカーを開く
+				if (geminiError?.status === 429 || geminiError?.status === 503) {
 					openCircuitBreaker();
-					console.error('Gemini API クォータ超過により、TMDBのみで動作します:', geminiError.message);
+					const errorType = geminiError?.status === 429 ? 'クォータ超過' : 'サービス過負荷';
+					console.error(`Gemini API ${errorType}により、TMDBのみで動作します:`, geminiError.message);
 				} else {
 					console.error('Gemini API error, falling back to TMDB:', geminiError);
 				}
@@ -278,13 +282,13 @@ JSON以外の説明やマークダウンは含めず、JSONのみを返してく
 		// Gemini APIが失敗した場合、またはAPIキーがない場合はTMDBのみを使用
 		if (movies.length === 0) {
 			// まずキーワード検索を試みる
-			const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(mood)}&language=ja-JP`;
+			const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(mood)}&language=${tmdbLanguage}`;
 			movies = await fetchMultiplePages(searchUrl, 30);
 
 			if (movies.length === 0) {
 				// キーワード検索で結果がない場合、ジャンルベースで検索
 				const genres = getGenresByMood(mood);
-				const discoverUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=ja-JP&sort_by=popularity.desc&with_genres=${genres.join(',')}&vote_count.gte=100`;
+				const discoverUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=${tmdbLanguage}&sort_by=popularity.desc&with_genres=${genres.join(',')}&vote_count.gte=100`;
 				movies = await fetchMultiplePages(discoverUrl, 30);
 			}
 		}

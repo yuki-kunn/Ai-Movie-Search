@@ -3,9 +3,11 @@ import type { RequestHandler } from './$types';
 
 const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY || '';
 
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, url }) => {
 	try {
 		const { id } = params;
+		const language = url.searchParams.get('language') || 'ja';
+		const tmdbLanguage = language === 'ja' ? 'ja-JP' : 'en-US';
 
 		if (!TMDB_API_KEY) {
 			return json({ error: 'TMDB APIキーが設定されていません' }, { status: 500 });
@@ -13,7 +15,7 @@ export const GET: RequestHandler = async ({ params }) => {
 
 		// 映画の詳細情報を取得（公式サイトのURL含む）
 		const detailResponse = await fetch(
-			`https://api.themoviedb.org/3/movie/${id}?api_key=${TMDB_API_KEY}&language=ja-JP`
+			`https://api.themoviedb.org/3/movie/${id}?api_key=${TMDB_API_KEY}&language=${tmdbLanguage}`
 		);
 		const detail = await detailResponse.json();
 

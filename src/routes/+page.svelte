@@ -31,6 +31,8 @@
 
 	const STORAGE_KEY = 'ai-movie-search-state';
 
+	type Language = 'ja' | 'en';
+
 	let mood = $state('');
 	let movies = $state<Movie[]>([]);
 	let loading = $state(false);
@@ -39,6 +41,8 @@
 	let selectedMovie = $state<Movie | null>(null);
 	let movieDetail = $state<MovieDetail | null>(null);
 	let loadingDetail = $state(false);
+	let language = $state<Language>('ja');
+	let movieIds = $state<number[]>([]); // 映画IDリストを保持
 	const itemsPerPage = 20;
 
 	// localStorageからデータを復元
@@ -51,6 +55,8 @@
 					mood = data.mood || '';
 					movies = data.movies || [];
 					currentPage = data.currentPage || 1;
+					language = data.language || 'ja';
+					movieIds = data.movieIds || [];
 				}
 			} catch (err) {
 				console.error('Failed to restore from localStorage:', err);
@@ -65,7 +71,9 @@
 				const data = {
 					mood,
 					movies,
-					currentPage
+					currentPage,
+					language,
+					movieIds
 				};
 				localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 			} catch (err) {
@@ -102,7 +110,7 @@
 
 	async function searchMovies() {
 		if (!mood.trim()) {
-			error = '気分やキーワードを入力してください';
+			error = language === 'ja' ? '気分やキーワードを入力してください' : 'Please enter a mood or keyword';
 			return;
 		}
 
@@ -117,19 +125,80 @@
 				headers: {
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({ mood }),
+				body: JSON.stringify({ mood, language }),
 			});
 
 			if (!response.ok) {
-				throw new Error('映画の検索に失敗しました');
+				throw new Error(language === 'ja' ? '映画の検索に失敗しました' : 'Failed to search movies');
 			}
 
 			const data = await response.json();
 			movies = data.movies;
+			// 映画IDリストを保存
+			movieIds = movies.map(m => m.id);
 		} catch (err) {
-			error = err instanceof Error ? err.message : '予期しないエラーが発生しました';
+			error = err instanceof Error ? err.message : (language === 'ja' ? '予期しないエラーが発生しました' : 'An unexpected error occurred');
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function switchLanguage(lang: Language) {
+		if (language === lang) return; // 同じ言語なら何もしない
+
+		language = lang;
+
+		// 映画IDリストが存在する場合は、同じ映画を新しい言語で取得
+		if (movieIds.length > 0) {
+			loading = true;
+			error = '';
+			const previousPage = currentPage;
+			const selectedMovieId = selectedMovie?.id; // モーダルで開いている映画のIDを保持
+
+			try {
+				const response = await fetch('/api/movies', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({ movieIds, language: lang }),
+				});
+
+				if (!response.ok) {
+					throw new Error(lang === 'ja' ? '映画の取得に失敗しました' : 'Failed to fetch movies');
+				}
+
+				const data = await response.json();
+				movies = data.movies;
+				currentPage = previousPage; // ページ位置を保持
+
+				// モーダルが開いている場合は、selectedMovieオブジェクトを更新
+				if (selectedMovieId) {
+					const updatedMovie = movies.find(m => m.id === selectedMovieId);
+					if (updatedMovie) {
+						selectedMovie = updatedMovie;
+					}
+				}
+			} catch (err) {
+				error = err instanceof Error ? err.message : (lang === 'ja' ? '予期しないエラーが発生しました' : 'An unexpected error occurred');
+			} finally {
+				loading = false;
+			}
+		}
+
+		// モーダルが開いている場合は、新しい言語で詳細情報を再取得
+		if (selectedMovie) {
+			loadingDetail = true;
+			try {
+				const response = await fetch(`/api/movie/${selectedMovie.id}?language=${lang}`);
+				if (response.ok) {
+					movieDetail = await response.json();
+				}
+			} catch (err) {
+				console.error('Failed to fetch movie details:', err);
+			} finally {
+				loadingDetail = false;
+			}
 		}
 	}
 
@@ -145,7 +214,7 @@
 		loadingDetail = true;
 
 		try {
-			const response = await fetch(`/api/movie/${movie.id}`);
+			const response = await fetch(`/api/movie/${movie.id}?language=${language}`);
 			if (response.ok) {
 				movieDetail = await response.json();
 			}
@@ -169,11 +238,38 @@
 		transition={{ duration: 0.8, ease: 'easeOut' }}
 	>
 		<div class="w-full max-w-7xl mx-auto">
+			<!-- 言語切り替えタブ -->
+			<div class="flex justify-end px-3 sm:px-4 pt-4">
+				<div class="relative inline-flex bg-slate-800/80 backdrop-blur-lg rounded-full p-1 border border-slate-700">
+					<!-- スライドインジケーター -->
+					<div
+						class="absolute top-1 bottom-1 w-[calc(50%-4px)] bg-gradient-to-r from-purple-600 to-pink-600 rounded-full transition-transform duration-300 ease-out shadow-lg shadow-purple-500/30"
+						style="transform: translateX({language === 'ja' ? '0%' : '100%'})"
+					></div>
+
+					<!-- タブボタン -->
+					<button
+						onclick={() => switchLanguage('ja')}
+						class="relative z-10 px-4 sm:px-6 py-2 rounded-full text-sm sm:text-base font-semibold transition-colors duration-300 {language === 'ja' ? 'text-white' : 'text-gray-400 hover:text-gray-300'}"
+					>
+						🇯🇵 JP
+					</button>
+					<button
+						onclick={() => switchLanguage('en')}
+						class="relative z-10 px-4 sm:px-6 py-2 rounded-full text-sm sm:text-base font-semibold transition-colors duration-300 {language === 'en' ? 'text-white' : 'text-gray-400 hover:text-gray-300'}"
+					>
+						🇺🇸 EN
+					</button>
+				</div>
+			</div>
+
 			<h1 class="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-center mb-3 sm:mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent px-3 sm:px-4 pt-4 sm:pt-6 md:pt-8">
 				AI Movie Search
 			</h1>
 			<p class="text-center text-sm sm:text-base md:text-lg text-gray-400 mb-6 sm:mb-8 md:mb-10 px-3 sm:px-4">
-				あなたの気分やキーワードから、AIが最適な映画をおすすめします
+				{language === 'ja'
+					? 'あなたの気分やキーワードから、AIが最適な映画をおすすめします'
+					: 'AI recommends the best movies based on your mood and keywords'}
 			</p>
 
 			<div class="mb-6 sm:mb-8 md:mb-10">
@@ -182,7 +278,7 @@
 						type="text"
 						bind:value={mood}
 						onkeypress={handleKeyPress}
-						placeholder="例: 感動的な映画、アクション満載..."
+						placeholder={language === 'ja' ? '例: 感動的な映画、アクション満載...' : 'e.g. Heartwarming movie, Action-packed...'}
 						class="flex-1 px-4 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-slate-800/80 backdrop-blur-lg border border-slate-700 text-gray-100 placeholder-gray-500 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-purple-500"
 					/>
 					<button
@@ -190,7 +286,7 @@
 						disabled={loading}
 						class="px-6 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 font-semibold hover:from-purple-500 hover:to-pink-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-purple-500/30 text-sm sm:text-base whitespace-nowrap"
 					>
-						{loading ? '検索中...' : '検索'}
+						{loading ? (language === 'ja' ? '検索中...' : 'Searching...') : (language === 'ja' ? '検索' : 'Search')}
 					</button>
 				</div>
 				{#if error}
@@ -208,9 +304,16 @@
 				<!-- 結果の件数表示 -->
 				<div class="mb-4 sm:mb-6 text-center px-3 sm:px-4">
 					<p class="text-sm sm:text-base text-gray-400">
-						全 <span class="text-purple-400 font-bold">{movies.length}</span> 件の映画が見つかりました
-						{#if totalPages > 1}
-							<span class="block sm:inline mt-1 sm:mt-0">（ページ {currentPage} / {totalPages}）</span>
+						{#if language === 'ja'}
+							全 <span class="text-purple-400 font-bold">{movies.length}</span> 件の映画が見つかりました
+							{#if totalPages > 1}
+								<span class="block sm:inline mt-1 sm:mt-0">（ページ {currentPage} / {totalPages}）</span>
+							{/if}
+						{:else}
+							Found <span class="text-purple-400 font-bold">{movies.length}</span> movies
+							{#if totalPages > 1}
+								<span class="block sm:inline mt-1 sm:mt-0">(Page {currentPage} / {totalPages})</span>
+							{/if}
 						{/if}
 					</p>
 				</div>
@@ -364,7 +467,7 @@
 								</span>
 								{#if selectedMovie.release_date}
 									<span>
-										公開: {selectedMovie.release_date}
+										{language === 'ja' ? '公開' : 'Released'}: {selectedMovie.release_date}
 									</span>
 								{/if}
 							</div>
@@ -372,9 +475,9 @@
 
 						<!-- 概要 -->
 						<div class="mb-6">
-							<h3 class="text-lg font-semibold text-gray-200 mb-2">概要</h3>
+							<h3 class="text-lg font-semibold text-gray-200 mb-2">{language === 'ja' ? '概要' : 'Overview'}</h3>
 							<p class="text-gray-300 leading-relaxed">
-								{selectedMovie.overview || '概要情報がありません'}
+								{selectedMovie.overview || (language === 'ja' ? '概要情報がありません' : 'No overview available')}
 							</p>
 						</div>
 
@@ -387,7 +490,7 @@
 							<!-- 公式サイトとIMDb -->
 							{#if movieDetail.homepage || movieDetail.imdb_id}
 								<div class="mb-6">
-									<h3 class="text-lg font-semibold text-gray-200 mb-3">公式リンク</h3>
+									<h3 class="text-lg font-semibold text-gray-200 mb-3">{language === 'ja' ? '公式リンク' : 'Official Links'}</h3>
 									<div class="flex flex-wrap gap-2">
 										{#if movieDetail.homepage}
 											<a
@@ -399,7 +502,7 @@
 												<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
 												</svg>
-												公式サイト
+												{language === 'ja' ? '公式サイト' : 'Official Site'}
 											</a>
 										{/if}
 										{#if movieDetail.imdb_id}
@@ -423,13 +526,15 @@
 							<!-- 配信サービス -->
 							{#if movieDetail.providers.flatrate.length > 0 || movieDetail.providers.rent.length > 0 || movieDetail.providers.buy.length > 0}
 								<div class="mb-4">
-									<h3 class="text-lg font-semibold text-gray-200 mb-3">配信サービス</h3>
-									<p class="text-xs text-gray-500 mb-3">※クリックすると配信サービスの視聴ページに移動します</p>
+									<h3 class="text-lg font-semibold text-gray-200 mb-3">{language === 'ja' ? '配信サービス' : 'Streaming Services'}</h3>
+									<p class="text-xs text-gray-500 mb-3">
+										{language === 'ja' ? '※クリックすると配信サービスの視聴ページに移動します' : '※Click to go to the streaming page'}
+									</p>
 
 									<!-- サブスク配信 -->
 									{#if movieDetail.providers.flatrate.length > 0}
 										<div class="mb-4">
-											<h4 class="text-sm font-medium text-gray-400 mb-2">見放題配信</h4>
+											<h4 class="text-sm font-medium text-gray-400 mb-2">{language === 'ja' ? '見放題配信' : 'Subscription'}</h4>
 											<div class="flex flex-wrap gap-3">
 												{#each movieDetail.providers.flatrate as provider}
 													{#if movieDetail.providers.link}
@@ -471,7 +576,7 @@
 									<!-- レンタル -->
 									{#if movieDetail.providers.rent.length > 0}
 										<div class="mb-4">
-											<h4 class="text-sm font-medium text-gray-400 mb-2">レンタル</h4>
+											<h4 class="text-sm font-medium text-gray-400 mb-2">{language === 'ja' ? 'レンタル' : 'Rent'}</h4>
 											<div class="flex flex-wrap gap-3">
 												{#each movieDetail.providers.rent as provider}
 													{#if movieDetail.providers.link}
@@ -513,7 +618,7 @@
 									<!-- 購入 -->
 									{#if movieDetail.providers.buy.length > 0}
 										<div class="mb-4">
-											<h4 class="text-sm font-medium text-gray-400 mb-2">購入</h4>
+											<h4 class="text-sm font-medium text-gray-400 mb-2">{language === 'ja' ? '購入' : 'Buy'}</h4>
 											<div class="flex flex-wrap gap-3">
 												{#each movieDetail.providers.buy as provider}
 													{#if movieDetail.providers.link}
