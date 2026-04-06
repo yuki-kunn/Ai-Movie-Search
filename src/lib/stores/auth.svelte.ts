@@ -11,6 +11,7 @@ type UserProfile = {
 	uid: string;
 	email: string | null;
 	username: string;
+	gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
 	createdAt: Date;
 };
 
@@ -77,6 +78,7 @@ class AuthStore {
 					uid: data.uid,
 					email: data.email,
 					username: data.username,
+					gender: data.gender,
 					createdAt: data.createdAt?.toDate() || new Date(),
 				};
 			}
@@ -114,6 +116,40 @@ class AuthStore {
 			console.error('Update username error:', error);
 			throw error;
 		}
+	}
+
+	// プロフィールを更新（性別を含む）
+	async updateProfile(updates: { username?: string; gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say' }) {
+		if (!this.user) return;
+
+		try {
+			const userDoc = await getDoc(doc(db, 'users', this.user.uid));
+
+			if (userDoc.exists()) {
+				// 既存ユーザー: 更新
+				await updateDoc(doc(db, 'users', this.user.uid), updates);
+			} else {
+				// 新規ユーザー: 作成
+				await setDoc(doc(db, 'users', this.user.uid), {
+					uid: this.user.uid,
+					email: this.user.email,
+					username: updates.username || this.user.displayName || '',
+					gender: updates.gender,
+					createdAt: new Date(),
+				});
+			}
+
+			// プロフィールを再読み込みして反映
+			await this.loadUserProfile(this.user.uid);
+		} catch (error) {
+			console.error('Update profile error:', error);
+			throw error;
+		}
+	}
+
+	// 管理者かどうかを確認
+	isAdmin(): boolean {
+		return this.user?.email === 'hokuyoyuki@gmail.com';
 	}
 }
 

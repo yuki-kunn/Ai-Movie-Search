@@ -1,0 +1,22 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ユーザープロフィールのルール
+    match /users/{userId} {
+      // 認証済みユーザーは自分のプロフィールを読み書き可能
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // お気に入りのルール
+    match /users/{userId}/favorites/{favoriteId} {
+      // 認証済みユーザーは自分のお気に入りを読み書き可能
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // デフォルトは全てのアクセスを拒否
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

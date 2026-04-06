@@ -3,48 +3,35 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { favoritesStore } from '$lib/stores/favorites.svelte';
+	import { languageStore } from '$lib/stores/language.svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { browser } from '$app/environment';
 
 	let { children } = $props();
 
 	let menuOpen = $state(false);
 	let showUsernameDialog = $state(false);
 	let newUsername = $state('');
+	let selectedGender = $state<'male' | 'female' | 'other' | 'prefer_not_to_say'>('prefer_not_to_say');
 	let savingUsername = $state(false);
-	let language = $state<'ja' | 'en'>('ja');
 	let isFirstTimeUser = $state(false); // 初回ユーザーかどうか
 
-	onMount(() => {
-		// 言語設定を読み込み
-		if (browser) {
-			const savedLang = localStorage.getItem('ai-movie-search-language');
-			if (savedLang === 'ja' || savedLang === 'en') {
-				language = savedLang;
-			}
+	// ユーザーがログインしたらお気に入りを読み込む
+	$effect(() => {
+		if (authStore.user) {
+			favoritesStore.loadFavorites();
 		}
+	});
 
-		// ユーザーがログインしたらお気に入りを読み込む
-		$effect(() => {
-			if (authStore.user) {
-				favoritesStore.loadFavorites();
-			}
-		});
-
-		// ページ遷移時にメニューを閉じる
-		$effect(() => {
-			$page.url.pathname;
-			menuOpen = false;
-		});
+	// ページ遷移時にメニューを閉じる
+	$effect(() => {
+		$page.url.pathname;
+		menuOpen = false;
 	});
 
 	function switchLanguage(lang: 'ja' | 'en') {
-		language = lang;
-		if (browser) {
-			localStorage.setItem('ai-movie-search-language', lang);
-		}
+		languageStore.setLanguage(lang);
 	}
 
 	async function handleSignIn() {
@@ -85,13 +72,17 @@
 
 		savingUsername = true;
 		try {
-			await authStore.updateUsername(newUsername.trim());
+			await authStore.updateProfile({
+				username: newUsername.trim(),
+				gender: selectedGender,
+			});
 			showUsernameDialog = false;
 			isFirstTimeUser = false;
 			newUsername = '';
+			selectedGender = 'prefer_not_to_say';
 		} catch (error) {
 			console.error('Failed to update username:', error);
-			alert(language === 'ja' ? 'ユーザー名の更新に失敗しました' : 'Failed to update username');
+			alert(languageStore.language === 'ja' ? 'ユーザー名の更新に失敗しました' : 'Failed to update username');
 		} finally {
 			savingUsername = false;
 		}
@@ -100,8 +91,22 @@
 	function openUsernameDialog() {
 		isFirstTimeUser = false; // 設定から開いた場合は既存ユーザー
 		newUsername = authStore.userProfile?.username || '';
+		selectedGender = authStore.userProfile?.gender || 'prefer_not_to_say';
 		showUsernameDialog = true;
 		menuOpen = false;
+	}
+
+	function getGenderLabel(gender: string): string {
+		switch (gender) {
+			case 'male':
+				return languageStore.language === 'ja' ? '男性' : 'Male';
+			case 'female':
+				return languageStore.language === 'ja' ? '女性' : 'Female';
+			case 'other':
+				return languageStore.language === 'ja' ? 'その他' : 'Other';
+			default:
+				return languageStore.language === 'ja' ? '回答しない' : 'Prefer not to say';
+		}
 	}
 </script>
 
@@ -127,7 +132,7 @@
 							? 'text-white bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/50'
 							: 'text-gray-300 hover:text-white hover:bg-slate-800'}"
 					>
-						{language === 'ja' ? '検索' : 'Search'}
+						{languageStore.language === 'ja' ? '検索' : 'Search'}
 					</a>
 					{#if authStore.user}
 						<a
@@ -136,7 +141,17 @@
 								? 'text-white bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/50'
 								: 'text-gray-300 hover:text-white hover:bg-slate-800'}"
 						>
-							{language === 'ja' ? 'お気に入り' : 'Favorites'}
+							{languageStore.language === 'ja' ? 'お気に入り' : 'Favorites'}
+						</a>
+					{/if}
+					{#if authStore.isAdmin()}
+						<a
+							href="/admin"
+							class="px-3 py-2 rounded-lg transition-all font-medium {$page.url.pathname.startsWith('/admin')
+								? 'text-white bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border border-blue-500/50'
+								: 'text-gray-300 hover:text-white hover:bg-slate-800'}"
+						>
+							{languageStore.language === 'ja' ? '管理画面' : 'Admin'}
 						</a>
 					{/if}
 
@@ -144,17 +159,17 @@
 					<div class="relative inline-flex bg-slate-800 rounded-full p-1">
 						<div
 							class="absolute top-1 bottom-1 w-[calc(50%-4px)] bg-gradient-to-r from-purple-600 to-pink-600 rounded-full transition-transform duration-300 ease-out"
-							style="transform: translateX({language === 'ja' ? '0%' : '100%'})"
+							style="transform: translateX({languageStore.language === 'ja' ? '0%' : '100%'})"
 						></div>
 						<button
 							onclick={() => switchLanguage('ja')}
-							class="relative z-10 px-3 py-1 rounded-full text-sm font-semibold transition-colors duration-300 {language === 'ja' ? 'text-white' : 'text-gray-400'}"
+							class="relative z-10 px-3 py-1 rounded-full text-sm font-semibold transition-colors duration-300 {languageStore.language === 'ja' ? 'text-white' : 'text-gray-400'}"
 						>
 							🇯🇵
 						</button>
 						<button
 							onclick={() => switchLanguage('en')}
-							class="relative z-10 px-3 py-1 rounded-full text-sm font-semibold transition-colors duration-300 {language === 'en' ? 'text-white' : 'text-gray-400'}"
+							class="relative z-10 px-3 py-1 rounded-full text-sm font-semibold transition-colors duration-300 {languageStore.language === 'en' ? 'text-white' : 'text-gray-400'}"
 						>
 							🇺🇸
 						</button>
@@ -165,13 +180,13 @@
 						<div class="flex items-center gap-3">
 							<div class="px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700">
 								<span class="text-sm text-gray-300 font-medium">
-									{authStore.userProfile?.username || authStore.user.email}
+									{authStore.userProfile?.username || (languageStore.language === 'ja' ? 'ユーザーネーム未設定' : 'Username not set')}
 								</span>
 							</div>
 							<button
 								onclick={openUsernameDialog}
 								class="p-2 text-gray-400 hover:text-purple-400 hover:bg-slate-800 rounded-lg transition-all"
-								title={language === 'ja' ? '設定' : 'Settings'}
+								title={languageStore.language === 'ja' ? '設定' : 'Settings'}
 							>
 								<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -182,7 +197,7 @@
 								onclick={handleSignOut}
 								class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors"
 							>
-								{language === 'ja' ? 'ログアウト' : 'Sign Out'}
+								{languageStore.language === 'ja' ? 'ログアウト' : 'Sign Out'}
 							</button>
 						</div>
 					{:else}
@@ -196,7 +211,7 @@
 								<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
 								<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
 							</svg>
-							{language === 'ja' ? 'Googleでログイン' : 'Sign in with Google'}
+							{languageStore.language === 'ja' ? 'Googleでログイン' : 'Sign in with Google'}
 						</button>
 					{/if}
 				</div>
@@ -241,7 +256,7 @@
 						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 						</svg>
-						{language === 'ja' ? '検索' : 'Search'}
+						{languageStore.language === 'ja' ? '検索' : 'Search'}
 					</a>
 					{#if authStore.user}
 						<a
@@ -254,7 +269,21 @@
 							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
 							</svg>
-							{language === 'ja' ? 'お気に入り' : 'Favorites'}
+							{languageStore.language === 'ja' ? 'お気に入り' : 'Favorites'}
+						</a>
+					{/if}
+					{#if authStore.isAdmin()}
+						<a
+							href="/admin"
+							onclick={() => (menuOpen = false)}
+							class="flex items-center gap-3 px-4 py-3 rounded-lg transition-all {$page.url.pathname.startsWith('/admin')
+								? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold shadow-lg shadow-blue-500/30'
+								: 'text-gray-300 hover:bg-slate-800'}"
+						>
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+							</svg>
+							{languageStore.language === 'ja' ? '管理画面' : 'Admin'}
 						</a>
 					{/if}
 
@@ -263,21 +292,21 @@
 
 					<!-- Language Toggle -->
 					<div class="px-2">
-						<p class="text-xs text-gray-500 mb-2 px-2">{language === 'ja' ? '言語' : 'Language'}</p>
+						<p class="text-xs text-gray-500 mb-2 px-2">{languageStore.language === 'ja' ? '言語' : 'Language'}</p>
 						<div class="relative inline-flex bg-slate-800 rounded-lg p-1 w-full border border-slate-700">
 							<div
 								class="absolute top-1 bottom-1 w-[calc(50%-4px)] bg-gradient-to-r from-purple-600 to-pink-600 rounded-md transition-transform duration-300 ease-out shadow-lg"
-								style="transform: translateX({language === 'ja' ? '0%' : '100%'})"
+								style="transform: translateX({languageStore.language === 'ja' ? '0%' : '100%'})"
 							></div>
 							<button
 								onclick={() => switchLanguage('ja')}
-								class="relative z-10 flex-1 py-2 rounded-md text-sm font-semibold transition-colors duration-300 {language === 'ja' ? 'text-white' : 'text-gray-400'}"
+								class="relative z-10 flex-1 py-2 rounded-md text-sm font-semibold transition-colors duration-300 {languageStore.language === 'ja' ? 'text-white' : 'text-gray-400'}"
 							>
 								🇯🇵 JP
 							</button>
 							<button
 								onclick={() => switchLanguage('en')}
-								class="relative z-10 flex-1 py-2 rounded-md text-sm font-semibold transition-colors duration-300 {language === 'en' ? 'text-white' : 'text-gray-400'}"
+								class="relative z-10 flex-1 py-2 rounded-md text-sm font-semibold transition-colors duration-300 {languageStore.language === 'en' ? 'text-white' : 'text-gray-400'}"
 							>
 								🇺🇸 EN
 							</button>
@@ -289,11 +318,11 @@
 
 					{#if authStore.user}
 						<div class="px-2">
-							<p class="text-xs text-gray-500 mb-2 px-2">{language === 'ja' ? 'アカウント' : 'Account'}</p>
+							<p class="text-xs text-gray-500 mb-2 px-2">{languageStore.language === 'ja' ? 'アカウント' : 'Account'}</p>
 							<div class="px-3 py-2 mb-2 bg-slate-800/50 rounded-lg border border-slate-700">
-								<p class="text-xs text-gray-500">{language === 'ja' ? 'ユーザー名' : 'Username'}</p>
+								<p class="text-xs text-gray-500">{languageStore.language === 'ja' ? 'ユーザー名' : 'Username'}</p>
 								<p class="text-sm text-white font-medium">
-									{authStore.userProfile?.username || authStore.user.email}
+									{authStore.userProfile?.username || (languageStore.language === 'ja' ? 'ユーザーネーム未設定' : 'Username not set')}
 								</p>
 							</div>
 							<button
@@ -303,7 +332,7 @@
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
 								</svg>
-								{language === 'ja' ? 'ユーザー名変更' : 'Change Username'}
+								{languageStore.language === 'ja' ? 'ユーザー名変更' : 'Change Username'}
 							</button>
 							<button
 								onclick={handleSignOut}
@@ -312,7 +341,7 @@
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
 								</svg>
-								{language === 'ja' ? 'ログアウト' : 'Sign Out'}
+								{languageStore.language === 'ja' ? 'ログアウト' : 'Sign Out'}
 							</button>
 						</div>
 					{:else}
@@ -327,7 +356,7 @@
 									<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
 									<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
 								</svg>
-								{language === 'ja' ? 'Googleでログイン' : 'Sign in with Google'}
+								{languageStore.language === 'ja' ? 'Googleでログイン' : 'Sign in with Google'}
 							</button>
 						</div>
 					{/if}
@@ -361,26 +390,78 @@
 			<div class="bg-slate-900 rounded-2xl max-w-md w-full p-6 border border-slate-700 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
 				<h2 class="text-xl font-bold mb-2">
 					{isFirstTimeUser
-						? (language === 'ja' ? 'ようこそ！' : 'Welcome!')
-						: (language === 'ja' ? 'ユーザー名を変更' : 'Change Username')}
+						? (languageStore.language === 'ja' ? 'ようこそ！' : 'Welcome!')
+						: (languageStore.language === 'ja' ? 'プロフィール設定' : 'Profile Settings')}
 				</h2>
 				{#if isFirstTimeUser}
 					<p class="text-sm text-gray-400 mb-4">
-						{language === 'ja' ? 'ユーザー名を設定してください' : 'Please set your username'}
+						{languageStore.language === 'ja' ? 'プロフィールを設定してください' : 'Please set your profile'}
 					</p>
 				{/if}
-				<input
-					type="text"
-					bind:value={newUsername}
-					onkeydown={(e) => {
-						if (e.key === 'Enter' && newUsername.trim()) {
-							handleUpdateUsername();
-						}
-					}}
-					placeholder={language === 'ja' ? 'ユーザー名を入力' : 'Enter username'}
-					class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-600 mb-4"
-					autofocus
-				/>
+
+				<!-- Username -->
+				<div class="mb-4">
+					<label class="block text-sm font-medium text-gray-400 mb-2">
+						{languageStore.language === 'ja' ? 'ユーザー名' : 'Username'}
+					</label>
+					<input
+						type="text"
+						bind:value={newUsername}
+						onkeydown={(e) => {
+							if (e.key === 'Enter' && newUsername.trim()) {
+								handleUpdateUsername();
+							}
+						}}
+						placeholder={languageStore.language === 'ja' ? 'ユーザー名を入力' : 'Enter username'}
+						class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-600"
+						autofocus
+					/>
+				</div>
+
+				<!-- Gender -->
+				<div class="mb-4">
+					<label class="block text-sm font-medium text-gray-400 mb-2">
+						{languageStore.language === 'ja' ? '性別（任意）' : 'Gender (Optional)'}
+					</label>
+					<div class="grid grid-cols-2 gap-2">
+						<button
+							type="button"
+							onclick={() => (selectedGender = 'male')}
+							class="px-4 py-2 rounded-lg border transition-all {selectedGender === 'male'
+								? 'bg-blue-600 border-blue-500 text-white'
+								: 'bg-slate-800 border-slate-700 text-gray-400 hover:border-slate-600'}"
+						>
+							{languageStore.language === 'ja' ? '男性' : 'Male'}
+						</button>
+						<button
+							type="button"
+							onclick={() => (selectedGender = 'female')}
+							class="px-4 py-2 rounded-lg border transition-all {selectedGender === 'female'
+								? 'bg-rose-600 border-rose-500 text-white'
+								: 'bg-slate-800 border-slate-700 text-gray-400 hover:border-slate-600'}"
+						>
+							{languageStore.language === 'ja' ? '女性' : 'Female'}
+						</button>
+						<button
+							type="button"
+							onclick={() => (selectedGender = 'other')}
+							class="px-4 py-2 rounded-lg border transition-all {selectedGender === 'other'
+								? 'bg-purple-600 border-purple-500 text-white'
+								: 'bg-slate-800 border-slate-700 text-gray-400 hover:border-slate-600'}"
+						>
+							{languageStore.language === 'ja' ? 'その他' : 'Other'}
+						</button>
+						<button
+							type="button"
+							onclick={() => (selectedGender = 'prefer_not_to_say')}
+							class="px-4 py-2 rounded-lg border transition-all {selectedGender === 'prefer_not_to_say'
+								? 'bg-gray-600 border-gray-500 text-white'
+								: 'bg-slate-800 border-slate-700 text-gray-400 hover:border-slate-600'}"
+						>
+							{languageStore.language === 'ja' ? '回答しない' : 'Prefer not to say'}
+						</button>
+					</div>
+				</div>
 				<div class="flex gap-3">
 					{#if !isFirstTimeUser}
 						<button
@@ -391,7 +472,7 @@
 							class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
 							disabled={savingUsername}
 						>
-							{language === 'ja' ? 'キャンセル' : 'Cancel'}
+							{languageStore.language === 'ja' ? 'キャンセル' : 'Cancel'}
 						</button>
 					{/if}
 					<button
@@ -399,7 +480,7 @@
 						class="{isFirstTimeUser ? 'w-full' : 'flex-1'} px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
 						disabled={savingUsername || !newUsername.trim()}
 					>
-						{savingUsername ? (language === 'ja' ? '保存中...' : 'Saving...') : (language === 'ja' ? '保存' : 'Save')}
+						{savingUsername ? (languageStore.language === 'ja' ? '保存中...' : 'Saving...') : (languageStore.language === 'ja' ? '保存' : 'Save')}
 					</button>
 				</div>
 			</div>

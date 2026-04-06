@@ -76,28 +76,46 @@ npm run dev
 
 6. ブラウザで http://localhost:5173 を開く
 
-## Firestore セキュリティルール（推奨）
+## Firestore セキュリティルールの設定（重要！）
 
-本番環境では、Firestore のセキュリティルールを設定してください:
+**⚠️ このステップは必須です。設定しないとアプリが動作しません。**
+
+### 設定方法
+
+1. [Firebase Console](https://console.firebase.google.com/)にアクセス
+2. プロジェクトを選択
+3. 左側メニューから「Firestore Database」を選択
+4. 「ルール」タブをクリック
+5. 以下のルールをコピーして貼り付け:
 
 ```javascript
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ユーザープロフィール
+    // ユーザープロフィールのルール
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
-      
-      // お気に入り
-      match /favorites/{movieId} {
-        allow read: if request.auth != null && request.auth.uid == userId;
-        allow write: if request.auth != null && request.auth.uid == userId;
-      }
+      // 認証済みユーザーは自分のプロフィールのみ読み書き可能
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // お気に入りのルール
+    match /users/{userId}/favorites/{favoriteId} {
+      // 認証済みユーザーは自分のお気に入りのみ読み書き可能
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // デフォルトは全てのアクセスを拒否
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
 ```
+
+6. 「公開」ボタンをクリック
+
+詳細な説明は `FIRESTORE_SETUP.md` を参照してください。
 
 ## 機能
 
@@ -110,10 +128,15 @@ service cloud.firestore {
 
 ## トラブルシューティング
 
+### "Missing or insufficient permissions" エラー
+このエラーが表示される場合、Firestoreのセキュリティルールが設定されていません。
+上記の「Firestoreセキュリティルールの設定」セクションを参照して、必ずルールを設定してください。
+
 ### Firebase エラーが出る
 - Firebase Console でプロジェクトの設定を確認
 - Authentication と Firestore が有効になっているか確認
 - `.env` ファイルの設定値が正しいか確認
+- Firestoreのセキュリティルールが正しく設定されているか確認
 
 ### 映画が検索できない
 - TMDB API キーが正しく設定されているか確認

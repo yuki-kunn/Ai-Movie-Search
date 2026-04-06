@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { favoritesStore } from '$lib/stores/favorites.svelte';
+	import { languageStore } from '$lib/stores/language.svelte';
 	import { goto } from '$app/navigation';
 
 	type Movie = {
@@ -34,7 +35,6 @@
 	let selectedMovie = $state<Movie | null>(null);
 	let movieDetail = $state<MovieDetail | null>(null);
 	let loadingDetail = $state(false);
-	let language = $state<'ja' | 'en'>('ja');
 
 	onMount(async () => {
 		// 未ログインの場合はトップページへ
@@ -45,12 +45,6 @@
 
 		// お気に入りを読み込み
 		await favoritesStore.loadFavorites();
-
-		// localStorageから言語設定を取得
-		const savedLang = localStorage.getItem('ai-movie-search-language');
-		if (savedLang === 'ja' || savedLang === 'en') {
-			language = savedLang;
-		}
 	});
 
 	async function openMovieDetail(movie: Movie) {
@@ -59,7 +53,7 @@
 		loadingDetail = true;
 
 		try {
-			const response = await fetch(`/api/movie/${movie.id}?language=${language}`);
+			const response = await fetch(`/api/movie/${movie.id}?language=${languageStore.language}`);
 			if (response.ok) {
 				movieDetail = await response.json();
 			}
@@ -89,10 +83,10 @@
 	>
 		<div class="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 pt-4 sm:pt-6 md:pt-8">
 			<h1 class="text-3xl sm:text-4xl md:text-5xl font-bold text-center mb-3 sm:mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent">
-				{language === 'ja' ? 'お気に入り' : 'My Favorites'}
+				{languageStore.language === 'ja' ? 'お気に入り' : 'My Favorites'}
 			</h1>
 			<p class="text-center text-sm sm:text-base text-gray-400 mb-6 sm:mb-8">
-				{language === 'ja'
+				{languageStore.language === 'ja'
 					? 'お気に入りに登録した映画一覧'
 					: 'Your favorite movies collection'}
 			</p>
@@ -107,10 +101,10 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
 					</svg>
 					<p class="text-gray-400 text-lg">
-						{language === 'ja' ? 'お気に入りはまだありません' : 'No favorites yet'}
+						{languageStore.language === 'ja' ? 'お気に入りはまだありません' : 'No favorites yet'}
 					</p>
 					<p class="text-gray-500 text-sm mt-2">
-						{language === 'ja'
+						{languageStore.language === 'ja'
 							? '映画を検索して、星アイコンをクリックしてお気に入りに追加しましょう'
 							: 'Search for movies and click the star icon to add favorites'}
 					</p>
@@ -118,7 +112,7 @@
 			{:else}
 				<div class="mb-4 sm:mb-6 text-center">
 					<p class="text-sm sm:text-base text-gray-400">
-						{language === 'ja' ? '全' : 'Total'} <span class="text-purple-400 font-bold">{favoritesStore.favorites.length}</span> {language === 'ja' ? '件' : 'movies'}
+						{languageStore.language === 'ja' ? '全' : 'Total'} <span class="text-purple-400 font-bold">{favoritesStore.favorites.length}</span> {languageStore.language === 'ja' ? '件' : 'movies'}
 					</p>
 				</div>
 
@@ -133,10 +127,16 @@
 								<!-- お気に入りボタン -->
 								<button
 									onclick={(e) => handleRemoveFavorite(movie.id, e)}
-									class="absolute top-2 right-2 z-10 p-1.5 bg-black/60 hover:bg-black/80 rounded-full transition-all"
+									class="absolute top-2 right-2 z-10 p-1.5 bg-black/60 hover:bg-black/80 rounded-full transition-all transform hover:scale-110 duration-200"
 									aria-label="Remove from favorites"
 								>
-									<svg class="w-5 h-5 text-yellow-400 fill-current" viewBox="0 0 20 20">
+									<svg
+										class="w-5 h-5 text-yellow-400 transition-all duration-200"
+										viewBox="0 0 20 20"
+										fill="currentColor"
+										stroke="currentColor"
+										stroke-width="0"
+									>
 										<path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
 									</svg>
 								</button>
@@ -154,7 +154,7 @@
 										</div>
 									{/if}
 									<div class="absolute inset-0 bg-gradient-to-t from-black/90 via-purple-950/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-2 sm:p-3">
-										<p class="text-xs line-clamp-3 text-gray-200">{movie.overview || (language === 'ja' ? '説明なし' : 'No overview')}</p>
+										<p class="text-xs line-clamp-3 text-gray-200">{movie.overview || (languageStore.language === 'ja' ? '説明なし' : 'No overview')}</p>
 									</div>
 								</div>
 								<h3 class="text-xs sm:text-sm md:text-base font-bold mb-1 text-gray-200 group-hover:text-purple-400 transition-colors line-clamp-2">
@@ -199,7 +199,7 @@
 					<button
 						onclick={closeMovieDetail}
 						class="absolute top-4 right-4 p-2 rounded-full bg-slate-800/80 hover:bg-slate-700 transition-colors z-10"
-						aria-label={language === 'ja' ? '閉じる' : 'Close'}
+						aria-label={languageStore.language === 'ja' ? '閉じる' : 'Close'}
 					>
 						<svg class="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -234,7 +234,7 @@
 								</span>
 								{#if selectedMovie.release_date}
 									<span>
-										{language === 'ja' ? '公開' : 'Released'}: {selectedMovie.release_date}
+										{languageStore.language === 'ja' ? '公開' : 'Released'}: {selectedMovie.release_date}
 									</span>
 								{/if}
 							</div>
@@ -242,9 +242,9 @@
 
 						<!-- 概要 -->
 						<div class="mb-6">
-							<h3 class="text-lg font-semibold text-gray-200 mb-2">{language === 'ja' ? '概要' : 'Overview'}</h3>
+							<h3 class="text-lg font-semibold text-gray-200 mb-2">{languageStore.language === 'ja' ? '概要' : 'Overview'}</h3>
 							<p class="text-gray-300 leading-relaxed">
-								{selectedMovie.overview || (language === 'ja' ? '概要情報がありません' : 'No overview available')}
+								{selectedMovie.overview || (languageStore.language === 'ja' ? '概要情報がありません' : 'No overview available')}
 							</p>
 						</div>
 
@@ -257,7 +257,7 @@
 							<!-- 公式サイトとIMDb -->
 							{#if movieDetail.homepage || movieDetail.imdb_id}
 								<div class="mb-6">
-									<h3 class="text-lg font-semibold text-gray-200 mb-3">{language === 'ja' ? '公式リンク' : 'Official Links'}</h3>
+									<h3 class="text-lg font-semibold text-gray-200 mb-3">{languageStore.language === 'ja' ? '公式リンク' : 'Official Links'}</h3>
 									<div class="flex flex-wrap gap-2">
 										{#if movieDetail.homepage}
 											<a
@@ -269,7 +269,7 @@
 												<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
 												</svg>
-												{language === 'ja' ? '公式サイト' : 'Official Site'}
+												{languageStore.language === 'ja' ? '公式サイト' : 'Official Site'}
 											</a>
 										{/if}
 										{#if movieDetail.imdb_id}
@@ -293,15 +293,15 @@
 							<!-- 配信サービス -->
 							{#if movieDetail.providers.flatrate.length > 0 || movieDetail.providers.rent.length > 0 || movieDetail.providers.buy.length > 0}
 								<div class="mb-4">
-									<h3 class="text-lg font-semibold text-gray-200 mb-3">{language === 'ja' ? '配信サービス' : 'Streaming Services'}</h3>
+									<h3 class="text-lg font-semibold text-gray-200 mb-3">{languageStore.language === 'ja' ? '配信サービス' : 'Streaming Services'}</h3>
 									<p class="text-xs text-gray-500 mb-3">
-										{language === 'ja' ? '※クリックすると配信サービスの視聴ページに移動します' : '※Click to go to the streaming page'}
+										{languageStore.language === 'ja' ? '※クリックすると配信サービスの視聴ページに移動します' : '※Click to go to the streaming page'}
 									</p>
 
 									<!-- サブスク配信 -->
 									{#if movieDetail.providers.flatrate.length > 0}
 										<div class="mb-4">
-											<h4 class="text-sm font-medium text-gray-400 mb-2">{language === 'ja' ? '見放題配信' : 'Subscription'}</h4>
+											<h4 class="text-sm font-medium text-gray-400 mb-2">{languageStore.language === 'ja' ? '見放題配信' : 'Subscription'}</h4>
 											<div class="flex flex-wrap gap-3">
 												{#each movieDetail.providers.flatrate as provider}
 													{#if movieDetail.providers.link}
@@ -343,7 +343,7 @@
 									<!-- レンタル -->
 									{#if movieDetail.providers.rent.length > 0}
 										<div class="mb-4">
-											<h4 class="text-sm font-medium text-gray-400 mb-2">{language === 'ja' ? 'レンタル' : 'Rent'}</h4>
+											<h4 class="text-sm font-medium text-gray-400 mb-2">{languageStore.language === 'ja' ? 'レンタル' : 'Rent'}</h4>
 											<div class="flex flex-wrap gap-3">
 												{#each movieDetail.providers.rent as provider}
 													{#if movieDetail.providers.link}
@@ -385,7 +385,7 @@
 									<!-- 購入 -->
 									{#if movieDetail.providers.buy.length > 0}
 										<div class="mb-4">
-											<h4 class="text-sm font-medium text-gray-400 mb-2">{language === 'ja' ? '購入' : 'Buy'}</h4>
+											<h4 class="text-sm font-medium text-gray-400 mb-2">{languageStore.language === 'ja' ? '購入' : 'Buy'}</h4>
 											<div class="flex flex-wrap gap-3">
 												{#each movieDetail.providers.buy as provider}
 													{#if movieDetail.providers.link}
